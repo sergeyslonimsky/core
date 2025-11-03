@@ -1,0 +1,15 @@
+database:
+  host: prod-database.com
+  ssl: true
+
+redis:
+  cluster: true
+  nodes:
+    - redis1:6379
+    - redis2:6379
+
+limits:
+  rateLimit: 200
+
+features:
+  newFeature: enabled

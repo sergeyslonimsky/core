@@ -1,0 +1,18 @@
+app:
+  env: test
+  service:
+    name: test-service
+
+database:
+  host: localhost
+  port: 5432
+  username: testuser
+  password: testpass
+
+redis:
+  host: localhost
+  port: 6379
+
+limits:
+  rateLimit: 100
+  timeout: 30s

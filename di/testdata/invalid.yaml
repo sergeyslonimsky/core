@@ -1,0 +1,4 @@
+this is not valid yaml:
+  - this line has wrong indentation
+    another line: value
+  wrong structure

@@ -1,0 +1,79 @@
+version: "2"
+run:
+  go: "1.24"
+  modules-download-mode: vendor
+  allow-parallel-runners: true
+linters:
+  default: all
+  disable:
+    - noinlineerr
+    - ireturn
+    - wsl
+  settings:
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          files:
+            - '!**/*_a _file.go'
+          allow:
+            - $gostd
+            - github.com/OpenPeeDeeP
+          deny:
+            - pkg: github.com/sirupsen/logrus
+              desc: not allowed
+            - pkg: github.com/pkg/errors
+              desc: Should be replaced by standard lib errors package
+    varnamelen:
+      ignore-names:
+        - id
+        - db
+        - q
+        - tx
+        - g
+        - ch
+        - v
+        - ok
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      - path: (.+)_test.go
+        linters:
+          - funlen
+          - goconst
+          - varnamelen
+          - exhaustruct
+          - godox
+          - err113
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(gitlab.com/golib3/core)
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
