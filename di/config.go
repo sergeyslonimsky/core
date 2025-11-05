@@ -205,8 +205,8 @@ func parseCommaSeparatedPaths(pathsStr string) []string {
 func buildEtcdPath(appEnv, serviceName, configPath string) string {
 	return fmt.Sprintf(
 		"%s/%s/%s",
-		serviceName,
 		appEnv,
+		serviceName,
 		configPath,
 	)
 }
