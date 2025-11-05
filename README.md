@@ -26,6 +26,20 @@ A comprehensive Go library for building production-ready microservices with mode
 go get github.com/sergeyslonimsky/core
 ```
 
+## Environment variables
+**Service variables**
+- `APP_ENV` - Application environment (dev, prod)
+- `APP_SERVICE_NAME` - Service name for etcd paths
+
+**File based config**
+- `APP_CONFIG_FILE_PATHS` - Comma-separated file paths
+
+**Etcd**
+- `APP_CONFIG_ETCD_ENDPOINT` - Etcd endpoint
+- `APP_CONFIG_ETCD_STATIC_PATHS` - Static config paths
+- `APP_CONFIG_ETCD_DYNAMIC_PATHS` - Config paths with live reload
+
+
 ## Packages
 
 ### `di` - Dependency Injection & Configuration
@@ -53,13 +67,6 @@ port := cfg.GetInt("server.port")
 portWatcher := cfg.WatchInt("server.port")
 currentPort := portWatcher() // Always returns fresh value
 ```
-
-**Environment variables:**
-- `APP_ENV` - Application environment (dev, prod)
-- `APP_SERVICE_NAME` - Service name for etcd paths
-- `APP_CONFIG_FILE_PATHS` - Comma-separated file paths
-- `APP_CONFIG_ETCD_ENDPOINT` - etcd endpoint
-- `APP_CONFIG_ETCD_DYNAMIC_PATHS` - Config paths with live reload
 
 ### `kafka/v2` - Kafka Client
 

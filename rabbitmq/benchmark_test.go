@@ -34,7 +34,7 @@ func BenchmarkPublisher_Publish(b *testing.B) {
 
 	msg := benchmarkMessage{ID: 1, Data: "benchmark message"}
 
-	for range b.N {
+	for b.Loop() {
 		_ = publisher.Publish(ctx, "test-exchange", "test.key", msg, rabbitmq.PublishOpts{
 			ContentType: "application/json",
 		})
@@ -47,7 +47,7 @@ func BenchmarkConsumer_NewConsumer(b *testing.B) {
 
 	b.ResetTimer()
 
-	for range b.N {
+	for b.Loop() {
 		_ = rabbitmq.NewConsumer("test-queue", processor)
 	}
 }

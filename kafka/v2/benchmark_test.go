@@ -86,7 +86,7 @@ func BenchmarkProducer_Memory(b *testing.B) {
 
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		producer, err := v2.NewSyncProducer("localhost:9092")
 		if err != nil {
 			b.Skip("Kafka not available")
@@ -224,7 +224,7 @@ func BenchmarkConsumer_HighThroughput(b *testing.B) {
 
 	b.ResetTimer()
 
-	for range b.N {
+	for b.Loop() {
 		processor := &simpleProcessor{}
 		cfg := v2.ConsumerConfig{
 			Brokers: brokers,

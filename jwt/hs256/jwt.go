@@ -33,7 +33,7 @@ func ParseToken[T jwt.Claims](tokenString string, secret []byte) (T, error) { //
 		return claims, ErrInvalidClaimsType
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, claimsPtr, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, claimsPtr, func(token *jwt.Token) (any, error) {
 		if _, ok = token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrInvalidSigningMethod
 		}

@@ -144,7 +144,7 @@ func TestNewConfig_EtcdStatic(t *testing.T) {
 		},
 	}
 
-	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/config.yaml", testData)
+	testhelpers.PutEtcdValue(t, endpoint, "test-service/test/config.yaml", testData)
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
@@ -178,7 +178,7 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 			"port": 5432,
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/base.yaml", baseConfig)
+	testhelpers.PutEtcdValue(t, endpoint, "test-service/test/base.yaml", baseConfig)
 
 	// Prepare second config (should override first)
 	overrideConfig := map[string]interface{}{
@@ -189,7 +189,7 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 			"host": "redis-host",
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/override.yaml", overrideConfig)
+	testhelpers.PutEtcdValue(t, endpoint, "test-service/test/override.yaml", overrideConfig)
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
@@ -227,7 +227,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 			},
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/dynamic.yaml", initialData)
+	testhelpers.PutEtcdValue(t, endpoint, "test-service/test/dynamic.yaml", initialData)
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
@@ -253,7 +253,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 			},
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/dynamic.yaml", updatedData)
+	testhelpers.PutEtcdValue(t, endpoint, "test-service/test/dynamic.yaml", updatedData)
 
 	// Wait for watch interval + buffer (etcd watches every 5 seconds)
 	time.Sleep(7 * time.Second)
@@ -278,7 +278,7 @@ func TestNewConfig_FullScenario(t *testing.T) {
 			"host": "etcd-static-host",
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "prod/full-service/static.yaml", staticConfig)
+	testhelpers.PutEtcdValue(t, endpoint, "full-service/prod/static.yaml", staticConfig)
 
 	// Prepare dynamic etcd config
 	dynamicConfig := map[string]interface{}{
@@ -286,7 +286,7 @@ func TestNewConfig_FullScenario(t *testing.T) {
 			"rateLimit": 500,
 		},
 	}
-	testhelpers.PutEtcdValue(t, endpoint, "prod/full-service/dynamic.yaml", dynamicConfig)
+	testhelpers.PutEtcdValue(t, endpoint, "full-service/prod/dynamic.yaml", dynamicConfig)
 
 	// Set environment variables (not using file config to avoid conflicts)
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
@@ -332,7 +332,7 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 		},
 	}
 	// Store config using CORRECT path (from env vars)
-	testhelpers.PutEtcdValue(t, endpoint, "correct-env/correct-service/config.yaml", configWithOverrides)
+	testhelpers.PutEtcdValue(t, endpoint, "correct-service/correct-env/config.yaml", configWithOverrides)
 
 	// Set environment variables - these should be immutable
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
