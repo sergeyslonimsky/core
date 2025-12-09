@@ -73,3 +73,11 @@ func (db *DBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) 
 
 	return tx, nil
 }
+
+func (db *DBConn) Close() error {
+	if err := db.db.Close(); err != nil {
+		return fmt.Errorf("db close: %w", err)
+	}
+
+	return nil
+}
