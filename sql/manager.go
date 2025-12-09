@@ -18,7 +18,7 @@ type Querier interface {
 }
 
 type Manager interface {
-	WithTx(ctx context.Context, callback func(q Querier) error) error
+	WithTx(ctx context.Context, callback func(context.Context) error) error
 	GetQuerier(ctx context.Context) Querier
 }
 
