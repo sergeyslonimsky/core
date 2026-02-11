@@ -160,11 +160,6 @@ func newTraceProvider(ctx context.Context, url string, resource *resource.Resour
 	return traceProvider, nil
 }
 
-// defaultHistogramBoundaries defines explicit bucket boundaries in milliseconds
-// for histogram metrics. Using explicit buckets instead of default exponential
-// histograms ensures compatibility with Prometheus histogram_quantile().
-var defaultHistogramBoundaries = []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000}
-
 func newMeterProvider(ctx context.Context, url string, resource *resource.Resource) (*metric.MeterProvider, error) {
 	metricExporter, err := otlpmetrichttp.New(ctx,
 		otlpmetrichttp.WithEndpoint(url),
@@ -178,9 +173,14 @@ func newMeterProvider(ctx context.Context, url string, resource *resource.Resour
 		metric.WithReader(metric.NewPeriodicReader(metricExporter, metric.WithInterval(defaultMetricsSendInterval))),
 		metric.WithResource(resource),
 		metric.WithView(metric.NewView(
+			//nolint:exhaustruct
 			metric.Instrument{Kind: metric.InstrumentKindHistogram},
+			//nolint:exhaustruct
 			metric.Stream{Aggregation: metric.AggregationExplicitBucketHistogram{
-				Boundaries: defaultHistogramBoundaries,
+				// defaultHistogramBoundaries defines explicit bucket boundaries in milliseconds
+				// for histogram metrics. Using explicit buckets instead of default exponential
+				// histograms ensures compatibility with Prometheus histogram_quantile().
+				Boundaries: []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000},
 			}},
 		)),
 	)
