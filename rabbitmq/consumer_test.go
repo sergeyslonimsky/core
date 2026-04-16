@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sergeyslonimsky/core/rabbitmq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/sergeyslonimsky/core/rabbitmq"
 )
 
 // testMessage is a test message type for consumer tests.
@@ -54,7 +55,7 @@ func TestNewConsumer_WithConsumerConfig(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithConsumerConfig[testMessage](config),
+		rabbitmq.WithConsumerConfig(config),
 	)
 
 	require.NotNil(t, consumer)
@@ -78,7 +79,7 @@ func TestNewConsumer_WithExchange(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithExchange[testMessage](exchangeConfig),
+		rabbitmq.WithExchange(exchangeConfig),
 	)
 
 	require.NotNil(t, consumer)
@@ -100,7 +101,7 @@ func TestNewConsumer_WithQueue(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithQueue[testMessage](queueConfig),
+		rabbitmq.WithQueue(queueConfig),
 	)
 
 	require.NotNil(t, consumer)
@@ -121,7 +122,7 @@ func TestNewConsumer_WithBindQueue(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithBindQueue[testMessage](bindConfig),
+		rabbitmq.WithBindQueue(bindConfig),
 	)
 
 	require.NotNil(t, consumer)
@@ -141,14 +142,15 @@ func TestNewConsumer_WithConsumeOpts(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithConsumeOpts[testMessage](consumeOpts),
+		rabbitmq.WithConsumeOpts(consumeOpts),
 	)
 
 	require.NotNil(t, consumer)
 }
 
-// TestNewConsumer_WithCustomBodyMarshaller tests consumer with custom marshaller.
-func TestNewConsumer_WithCustomBodyMarshaller(t *testing.T) {
+// TestNewConsumer_SetMarshaller tests installing a custom body marshaller
+// via the post-construction SetMarshaller method.
+func TestNewConsumer_SetMarshaller(t *testing.T) {
 	t.Parallel()
 
 	processor := &mockProcessor{name: "test-processor"}
@@ -159,11 +161,8 @@ func TestNewConsumer_WithCustomBodyMarshaller(t *testing.T) {
 		return nil
 	}
 
-	consumer := rabbitmq.NewConsumer(
-		"test-queue",
-		processor,
-		rabbitmq.WithCustomBodyMarshaller[testMessage](marshaller),
-	)
+	consumer := rabbitmq.NewConsumer[testMessage]("test-queue", processor)
+	consumer.SetMarshaller(marshaller)
 
 	require.NotNil(t, consumer)
 }
@@ -176,21 +175,21 @@ func TestNewConsumer_WithAllOptions(t *testing.T) {
 	consumer := rabbitmq.NewConsumer(
 		"test-queue",
 		processor,
-		rabbitmq.WithConsumerConfig[testMessage](rabbitmq.ConsumerConfig{
+		rabbitmq.WithConsumerConfig(rabbitmq.ConsumerConfig{
 			AutoAck: false,
 		}),
-		rabbitmq.WithExchange[testMessage](rabbitmq.ExchangeConfig{
+		rabbitmq.WithExchange(rabbitmq.ExchangeConfig{
 			Name: "test-exchange",
 			Kind: rabbitmq.ExchangeKindTopic,
 		}),
-		rabbitmq.WithQueue[testMessage](rabbitmq.QueueConfig{
+		rabbitmq.WithQueue(rabbitmq.QueueConfig{
 			Durable: true,
 		}),
-		rabbitmq.WithBindQueue[testMessage](rabbitmq.BindQueueConfig{
+		rabbitmq.WithBindQueue(rabbitmq.BindQueueConfig{
 			Exchange:   "test-exchange",
 			RoutingKey: "test.*",
 		}),
-		rabbitmq.WithConsumeOpts[testMessage](rabbitmq.ConsumeOpts{
+		rabbitmq.WithConsumeOpts(rabbitmq.ConsumeOpts{
 			PrefetchCount: 5,
 		}),
 	)

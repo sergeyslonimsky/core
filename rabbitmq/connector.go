@@ -13,99 +13,132 @@ const (
 	defaultConnectionWaitTime        = 2 * time.Second
 )
 
-type Connector interface {
+// ConnectorInterface is the surface used by Publisher and ConsumerHost to
+// drive the underlying rabbitroutine.Connector. Mainly an extension seam:
+// tests can substitute fakes; production code uses *Connector.
+//
+// The concrete struct is Connector; the interface is ConnectorInterface
+// to keep call sites readable and avoid name collision.
+type ConnectorInterface interface {
+	// Connect blocks until the broker is reachable and the connection is
+	// established. Subsequent reconnects are handled internally by
+	// rabbitroutine.
 	Connect(ctx context.Context) error
-	GetConnector() *rabbitroutine.Connector
+
+	// Inner returns the underlying *rabbitroutine.Connector for advanced
+	// use (custom listeners, channel pools).
+	Inner() *rabbitroutine.Connector
+
+	// StartConsumer attaches a rabbitroutine.Consumer to the connector and
+	// runs its loop until ctx is cancelled.
 	StartConsumer(ctx context.Context, consumer rabbitroutine.Consumer) error
 }
 
-type connectorOpts struct {
+// connectorOptions holds settings applied via ConnectorOption.
+type connectorOptions struct {
+	rabbitRoutineConfig rabbitroutine.Config
+
 	retriedListener      func(rabbitroutine.Retried)
 	dialedListener       func(rabbitroutine.Dialed)
 	amqpNotifiedListener func(rabbitroutine.AMQPNotified)
-	rabbitRoutineConfig  rabbitroutine.Config
 }
 
-type ConnectorOpts func(config *connectorOpts)
+// ConnectorOption configures a Connector.
+type ConnectorOption func(*connectorOptions)
 
-func WithConnectorReconnectionOpts(reconnectAttempts uint, wait time.Duration) ConnectorOpts {
-	return func(config *connectorOpts) {
-		config.rabbitRoutineConfig.ReconnectAttempts = reconnectAttempts
-		config.rabbitRoutineConfig.Wait = wait
-	}
+// WithReconnectAttempts overrides how many reconnect attempts the
+// underlying rabbitroutine.Connector makes before giving up. Default: 3.
+func WithReconnectAttempts(n uint) ConnectorOption {
+	return func(o *connectorOptions) { o.rabbitRoutineConfig.ReconnectAttempts = n }
 }
 
-func WithRetriedListener(listener func(rabbitroutine.Retried)) ConnectorOpts {
-	return func(config *connectorOpts) {
-		config.retriedListener = listener
-	}
+// WithReconnectWait overrides the delay between reconnect attempts.
+// Default: 2 seconds.
+func WithReconnectWait(d time.Duration) ConnectorOption {
+	return func(o *connectorOptions) { o.rabbitRoutineConfig.Wait = d }
 }
 
-func WithDialedListener(listener func(rabbitroutine.Dialed)) ConnectorOpts {
-	return func(config *connectorOpts) {
-		config.dialedListener = listener
-	}
+// WithRetriedListener attaches a callback fired on every reconnect retry.
+// Useful for surfacing reconnect activity in logs or metrics.
+func WithRetriedListener(fn func(rabbitroutine.Retried)) ConnectorOption {
+	return func(o *connectorOptions) { o.retriedListener = fn }
 }
 
-func WithAMQPNotifiedListener(listener func(rabbitroutine.AMQPNotified)) ConnectorOpts {
-	return func(config *connectorOpts) {
-		config.amqpNotifiedListener = listener
-	}
+// WithDialedListener attaches a callback fired on every successful dial.
+func WithDialedListener(fn func(rabbitroutine.Dialed)) ConnectorOption {
+	return func(o *connectorOptions) { o.dialedListener = fn }
 }
 
-type RabbitConnector struct {
-	config config
-	conn   *rabbitroutine.Connector
+// WithAMQPNotifiedListener attaches a callback fired when the broker sends
+// an AMQP notification (channel close, blocked, etc).
+func WithAMQPNotifiedListener(fn func(rabbitroutine.AMQPNotified)) ConnectorOption {
+	return func(o *connectorOptions) { o.amqpNotifiedListener = fn }
 }
 
-func NewRabbitConnector(cfg config, opts ...ConnectorOpts) *RabbitConnector {
-	defaultOpts := connectorOpts{ //nolint:exhaustruct
+// Connector wraps a rabbitroutine.Connector with reconnect configuration
+// and listener wiring. Created via NewConnector or implicitly inside
+// NewPublisher / NewConsumerHost.
+type Connector struct {
+	cfg  Config
+	conn *rabbitroutine.Connector
+}
+
+// NewConnector builds a Connector from the given Config and options. Does
+// NOT dial — use Connect (or have NewPublisher / NewConsumerHost call it
+// for you).
+func NewConnector(cfg Config, opts ...ConnectorOption) *Connector {
+	o := &connectorOptions{ //nolint:exhaustruct
 		rabbitRoutineConfig: rabbitroutine.Config{
 			ReconnectAttempts: defaultReconnectionAttempts,
 			Wait:              defaultConnectionWaitTime,
 		},
 	}
-
-	for _, opt := range opts {
-		opt(&defaultOpts)
+	for _, apply := range opts {
+		apply(o)
 	}
 
-	conn := rabbitroutine.NewConnector(defaultOpts.rabbitRoutineConfig)
+	conn := rabbitroutine.NewConnector(o.rabbitRoutineConfig)
 
-	if defaultOpts.retriedListener != nil {
-		conn.AddRetriedListener(defaultOpts.retriedListener)
+	if o.retriedListener != nil {
+		conn.AddRetriedListener(o.retriedListener)
 	}
 
-	if defaultOpts.dialedListener != nil {
-		conn.AddDialedListener(defaultOpts.dialedListener)
+	if o.dialedListener != nil {
+		conn.AddDialedListener(o.dialedListener)
 	}
 
-	if defaultOpts.amqpNotifiedListener != nil {
-		conn.AddAMQPNotifiedListener(defaultOpts.amqpNotifiedListener)
+	if o.amqpNotifiedListener != nil {
+		conn.AddAMQPNotifiedListener(o.amqpNotifiedListener)
 	}
 
-	return &RabbitConnector{
-		config: cfg,
-		conn:   conn,
-	}
+	return &Connector{cfg: cfg, conn: conn}
 }
 
-func (c *RabbitConnector) Connect(ctx context.Context) error {
-	if err := c.conn.Dial(ctx, c.config.DSN()); err != nil {
-		return fmt.Errorf("connect: %w", err)
+// Connect dials the broker. Subsequent reconnects are managed internally.
+// Blocks until the first connection is established or ctx expires.
+func (c *Connector) Connect(ctx context.Context) error {
+	if err := c.conn.Dial(ctx, c.cfg.DSN()); err != nil {
+		return fmt.Errorf("dial rabbitmq: %w", err)
 	}
 
 	return nil
 }
 
-func (c *RabbitConnector) GetConnector() *rabbitroutine.Connector {
+// Inner returns the underlying *rabbitroutine.Connector. Use for advanced
+// listener wiring or to integrate with code that expects the raw type.
+func (c *Connector) Inner() *rabbitroutine.Connector {
 	return c.conn
 }
 
-func (c *RabbitConnector) StartConsumer(ctx context.Context, consumer rabbitroutine.Consumer) error {
+// StartConsumer attaches a rabbitroutine.Consumer and runs its loop until
+// ctx is cancelled. Typically called by ConsumerHost.Run, not directly.
+func (c *Connector) StartConsumer(ctx context.Context, consumer rabbitroutine.Consumer) error {
 	if err := c.conn.StartConsumer(ctx, consumer); err != nil {
 		return fmt.Errorf("start consumer: %w", err)
 	}
 
 	return nil
 }
+
+// Compile-time check.
+var _ ConnectorInterface = (*Connector)(nil)

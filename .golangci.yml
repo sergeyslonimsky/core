@@ -9,6 +9,14 @@ linters:
     - ireturn
     - wsl
   settings:
+    gosec:
+      # G117 flags exported struct fields whose name matches a secret
+      # pattern (Password, Token, Secret, ...). Our Config structs
+      # intentionally expose such fields — they are connection parameters,
+      # not leaked secrets. Disabling the rule globally keeps the intent
+      # visible in the config instead of spraying //nolint comments.
+      excludes:
+        - G117
     wsl_v5:
       allow-first-in-block: true
       allow-whole-block: false
@@ -37,6 +45,15 @@ linters:
         - ch
         - v
         - ok
+        - o
+        - r
+        - c
+        - s
+        - a
+        - w
+        - p
+        - ss
+        - rc
   exclusions:
     generated: lax
     presets:
@@ -49,6 +66,10 @@ linters:
       - builtin$
       - examples$
     rules:
+      - path: ^sql/
+        linters:
+          - revive
+        text: "avoid package names that conflict"
       - path: (.+)_test.go
         linters:
           - funlen
@@ -57,19 +78,24 @@ linters:
           - exhaustruct
           - godox
           - err113
+          - gosec
+          - bodyclose
 formatters:
   enable:
     - gci
     - gofmt
     - gofumpt
     - goimports
+    - golines
   settings:
     gci:
       sections:
         - standard
         - default
-        - prefix(gitlab.com/golib3/core)
+        - prefix(github.com/sergeyslonimsky/core)
       custom-order: true
+    golines:
+      max-len: 120
   exclusions:
     generated: lax
     paths:

@@ -7,82 +7,101 @@ on:
   pull_request:
     branches: [ master, main ]
 
-env:
-  GO_VERSION: '1.25.3'
+# Cancel in-flight runs for the same ref when a new push lands. Saves CI time
+# on rapid commits (e.g., quick fixup pushes).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Lint both Go modules. Integration lives in a separate module
+  # (internal/integration) so it has its own imports and needs its own run.
   lint:
-    name: Lint
+    name: Lint (${{ matrix.module }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - '.'
+          - './internal/integration'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: ${{ matrix.module == '.' && 'go.mod' || 'internal/integration/go.mod' }}
           cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.5.0
+          version: v2.10.1
+          working-directory: ${{ matrix.module }}
           args: --timeout=5m
 
+  # Test on a matrix of supported Go versions so consumers on either can
+  # trust core to work. Stable = oldest declared in go.mod; latest = next
+  # major to catch forward-compat issues early.
   unit-tests:
-    name: Unit Tests
+    name: Unit Tests (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [ '1.25', '1.26' ]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - run: go mod download
 
       - name: Run unit tests
         run: go test -race -count=1 -timeout=2m -short -v ./...
 
+  # Integration tests live in a separate Go module so testcontainers and
+  # broker-client deps don't leak to consumers of core. Run them in that
+  # module's working directory. Docker is preinstalled on ubuntu-latest
+  # runners, testcontainers picks it up automatically.
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [ '1.25.x', '1.26.x' ]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ matrix.go-version }}
           cache: true
+          cache-dependency-path: internal/integration/go.sum
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Verify Docker availability
+        run: docker version
 
       - name: Run integration tests
-        run: go test -race -count=1 -timeout=15m -tags=integration -v ./...
+        working-directory: internal/integration
+        run: go test -race -count=1 -timeout=15m -v ./...
 
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - run: go mod download
 
       - name: Run tests with coverage
         run: go test -race -count=1 -timeout=2m -short -coverprofile=coverage.out -covermode=atomic ./...

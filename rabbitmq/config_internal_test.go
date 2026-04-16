@@ -3,8 +3,9 @@ package rabbitmq_test
 import (
 	"testing"
 
-	"github.com/sergeyslonimsky/core/rabbitmq"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/sergeyslonimsky/core/rabbitmq"
 )
 
 func TestConfig_dsn(t *testing.T) {

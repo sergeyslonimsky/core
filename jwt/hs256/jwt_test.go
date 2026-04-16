@@ -5,9 +5,10 @@ import (
 	"time"
 
 	jwt2 "github.com/golang-jwt/jwt/v5"
-	"github.com/sergeyslonimsky/core/jwt/hs256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/sergeyslonimsky/core/jwt/hs256"
 )
 
 type TestClaims struct {

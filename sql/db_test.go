@@ -8,9 +8,10 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
-	csql "github.com/sergeyslonimsky/core/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	csql "github.com/sergeyslonimsky/core/sql"
 )
 
 func TestManagerWithTx(t *testing.T) {
@@ -65,7 +66,9 @@ func TestManagerWithTx(t *testing.T) {
 				_, ok := q.(csql.Tx)
 				assert.True(t, ok)
 
-				qb := squirrel.Select("id", "name").From("test_table").Where(squirrel.Eq{"id": "test"})
+				qb := squirrel.Select("id", "name").
+					From("test_table").
+					Where(squirrel.Eq{"id": "test"})
 
 				_, err := csql.Get[ResultStruct](tCtx, q, qb)
 				if err != nil {
@@ -157,8 +160,7 @@ func setupTestDB(t *testing.T) (*csql.DBManager, sqlmock.Sqlmock) {
 		assert.NoError(t, db.Close())
 	})
 
-	dbConn, err := csql.NewDBFromSqlx(sqlx.NewDb(db, "postgres"))
-	require.NoError(t, err)
+	dbConn := csql.NewFromSqlx(sqlx.NewDb(db, "postgres"))
 
 	return csql.NewManager(dbConn), mock
 }
