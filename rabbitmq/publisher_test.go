@@ -3,44 +3,15 @@ package rabbitmq_test
 import (
 	"testing"
 
-	"github.com/sergeyslonimsky/core/rabbitmq"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/sergeyslonimsky/core/rabbitmq"
 )
 
-// TestNewRabbitPublisher tests creating a publisher with config.
-func TestNewRabbitPublisher(t *testing.T) {
-	t.Parallel()
-
-	cfg := rabbitmq.Config{
-		Host:     "localhost",
-		Port:     "5672",
-		User:     "guest",
-		Password: "guest",
-	}
-
-	publisher := rabbitmq.NewRabbitPublisher(cfg)
-	require.NotNil(t, publisher)
-}
-
-// TestNewRabbitPublisherWithConnector tests creating a publisher with custom connector.
-func TestNewRabbitPublisherWithConnector(t *testing.T) {
-	t.Parallel()
-
-	cfg := rabbitmq.Config{
-		Host:     "localhost",
-		Port:     "5672",
-		User:     "guest",
-		Password: "guest",
-	}
-
-	connector := rabbitmq.NewRabbitConnector(cfg)
-	publisher := rabbitmq.NewRabbitPublisherWithConnector(connector)
-
-	require.NotNil(t, publisher)
-}
-
-// TestPublishOpts tests PublishOpts structure.
+// TestPublishOpts is a sanity check on the PublishOpts struct fields.
+//
+// Constructor tests for Publisher require a live broker (NewPublisher
+// dials in the constructor); see e2e_integration_test.go for those.
 func TestPublishOpts(t *testing.T) {
 	t.Parallel()
 

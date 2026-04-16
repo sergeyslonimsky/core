@@ -1,350 +1,192 @@
-# Core
+# core
 
 [![CI](https://github.com/sergeyslonimsky/core/actions/workflows/ci.yml/badge.svg)](https://github.com/sergeyslonimsky/core/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/sergeyslonimsky/core)](https://go.dev/doc/go1.25)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sergeyslonimsky/core)](https://goreportcard.com/report/github.com/sergeyslonimsky/core)
 [![Latest Release](https://img.shields.io/github/v/release/sergeyslonimsky/core)](https://github.com/sergeyslonimsky/core/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![codecov](https://codecov.io/gh/sergeyslonimsky/core/branch/master/graph/badge.svg)](https://codecov.io/gh/sergeyslonimsky/core)
 
-A comprehensive Go library for building production-ready microservices with modern infrastructure components.
+A Go framework for bootstrapping observable production services. Provides one unified lifecycle contract (`Resource` / `Runner`), one option pattern, and opt-in OpenTelemetry across HTTP, gRPC, SQL, Redis, Kafka, RabbitMQ — so a fully observable service can be assembled in ~25 lines of `main.go`.
 
-## Features
-
-- **Dependency Injection & Configuration** - Dynamic config management with etcd support
-- **Message Brokers** - Kafka and RabbitMQ clients with comprehensive testing
-- **Databases** - PostgreSQL with sqlx and OpenTelemetry integration
-- **Caching** - Redis client wrapper
-- **Servers** - HTTP/2 and gRPC servers with middleware
-- **Authentication** - JWT token handling (HS256)
-- **Observability** - OpenTelemetry integration for traces, metrics, and logs
-- **Application Lifecycle** - Server lifecycle management
-
-## Installation
-
-```bash
-go get github.com/sergeyslonimsky/core
-```
-
-## Environment variables
-**Service variables**
-- `APP_ENV` - Application environment (dev, prod)
-- `APP_SERVICE_NAME` - Service name for etcd paths
-
-**File based config**
-- `APP_CONFIG_FILE_PATHS` - Comma-separated file paths
-
-**Etcd**
-- `APP_CONFIG_ETCD_ENDPOINT` - Etcd endpoint
-- `APP_CONFIG_ETCD_STATIC_PATHS` - Static config paths
-- `APP_CONFIG_ETCD_DYNAMIC_PATHS` - Config paths with live reload
-
-
-## Packages
-
-### `di` - Dependency Injection & Configuration
-
-Dynamic configuration management with support for:
-- **File-based config** - YAML/JSON configuration files
-- **etcd integration** - Remote configuration with live reloading
-- **Watch mode** - Automatic config updates every 5 seconds
-- **Thread-safe** - RWMutex protection for concurrent access
+## Quickstart — minimal observable service
 
 ```go
-import "github.com/sergeyslonimsky/core/di"
+package main
 
-// Create config with etcd watching
-cfg, err := di.NewConfig(ctx)
-if err != nil {
-    log.Fatal(err)
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/sergeyslonimsky/core/app"
+    coregrpc "github.com/sergeyslonimsky/core/grpc"
+    "github.com/sergeyslonimsky/core/http2"
+    "github.com/sergeyslonimsky/core/otel"
+    "github.com/sergeyslonimsky/core/redis"
+)
+
+func main() {
+    ctx := context.Background()
+
+    otelSDK, err := otel.Setup(ctx, otel.Config{
+        OTelHost:      "otel-collector:4318",
+        ServiceName:   "myservice",
+        EnableTracer:  true,
+        EnableMetrics: true,
+    })
+    if err != nil { log.Fatal(err) }
+
+    redisClient, err := redis.New(ctx, redis.Config{Host: "redis", Port: "6379"}, redis.WithOtel())
+    if err != nil { log.Fatal(err) }
+
+    httpServer := http2.NewServer(http2.Config{Port: "8080"},
+        http2.WithOtel(),
+        http2.WithRecovery(),
+    )
+    grpcServer := coregrpc.NewServer(coregrpc.Config{Port: "50051"},
+        coregrpc.WithOtel(),
+        coregrpc.WithRecovery(),
+    )
+
+    a := app.New(app.WithShutdownTimeout(30 * time.Second))
+    a.Add(otelSDK, redisClient)         // Resources: Redis closes first, OTel last
+    a.Add(grpcServer, httpServer)       // Runners: HTTP stops first, gRPC second
+
+    httpServer.Mount("/", myHandler())  // mount your routes
+    log.Fatal(a.Run())
 }
-
-// Read config values
-dbHost := cfg.GetString("database.host")
-port := cfg.GetInt("server.port")
-
-// Watch for changes
-portWatcher := cfg.WatchInt("server.port")
-currentPort := portWatcher() // Always returns fresh value
 ```
 
-### `kafka/v2` - Kafka Client
+This service:
 
-High-performance Kafka client based on [franz-go](https://github.com/twmb/franz-go):
-- **Producer** - Sync and async message production
-- **Consumer** - Consumer groups with automatic offset management
-- **Testing** - Testcontainers integration for integration tests
+- Handles SIGINT / SIGTERM gracefully.
+- Shuts down in LIFO order: HTTP stops accepting → gRPC stops → Redis closes → OTel flushes telemetry last.
+- Exposes `/livez`, `/readyz`, `/metrics` automatically on the HTTP server.
+- Emits OpenTelemetry traces and metrics for every HTTP request, gRPC RPC, and Redis command.
+
+## Core concepts
+
+`core` revolves around three small interfaces in [`core/lifecycle`](./lifecycle/README.md):
 
 ```go
-import v2 "github.com/sergeyslonimsky/core/kafka/v2"
-
-// Create producer (accepts broker string directly)
-producer, err := v2.NewSyncProducer("localhost:9092")
-if err != nil {
-    log.Fatal(err)
-}
-defer producer.Close()
-
-// Produce message
-err = producer.Produce("my-topic", "key", []byte("message"))
-```
-
-### `rabbitmq` - RabbitMQ Client
-
-Production-ready RabbitMQ client with:
-- **Publisher** - Thread-safe publishing with retry logic
-- **Consumer** - Generic consumer with configurable options
-- **Exchange types** - Direct, fanout, topic, headers
-- **Connection management** - Automatic reconnection with exponential backoff
-
-```go
-import "github.com/sergeyslonimsky/core/rabbitmq"
-
-// Create publisher
-cfg := rabbitmq.Config{
-    Host: "localhost",
-    Port: "5672",
-    User: "guest",
-    Password: "guest",
-}
-publisher := rabbitmq.NewRabbitPublisher(cfg)
-
-err := publisher.Run(ctx)
-if err != nil {
-    log.Fatal(err)
+type Resource interface {
+    Shutdown(ctx context.Context) error
 }
 
-// Publish message
-type MyMessage struct {
-    ID   int    `json:"id"`
-    Text string `json:"text"`
+type Runner interface {
+    Resource
+    Run(ctx context.Context) error
 }
 
-msg := MyMessage{ID: 1, Text: "Hello"}
-err = publisher.Publish(ctx, "my-exchange", "routing.key", msg, rabbitmq.PublishOpts{
-    ContentType: "application/json",
-})
-```
-
-### `redis` - Redis Client
-
-Redis client wrapper with connection pooling.
-
-```go
-import "github.com/sergeyslonimsky/core/redis"
-
-// Create Redis client with Config
-cfg := redis.Config{
-    Host:     "localhost",
-    Port:     "6379",
-    Password: "password",
-    DB:       0,
-}
-
-client, err := redis.NewRedis(context.Background(), cfg)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Set value
-err = client.Set(ctx, "key", "value", time.Hour)
-
-// Get value
-val, err := client.Get(ctx, "key")
-```
-
-### `sql` - PostgreSQL Client
-
-PostgreSQL client with sqlx and OpenTelemetry instrumentation:
-- **Connection pooling** - Configurable pool settings
-- **Tracing** - Automatic query tracing with OpenTelemetry
-- **Health checks** - Database connectivity monitoring
-
-```go
-import "github.com/sergeyslonimsky/core/sql"
-
-// Create database manager
-manager := sql.NewManager(sql.Config{
-    Host:     "localhost",
-    Port:     "5432",
-    User:     "postgres",
-    Password: "password",
-    Database: "mydb",
-    SSLMode:  "disable",
-})
-
-db, err := manager.Connect(ctx)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Query
-var users []User
-err = db.Select(&users, "SELECT * FROM users WHERE active = $1", true)
-```
-
-### `http2` - HTTP/2 Server
-
-HTTP/2 server with middleware support:
-- **Graceful shutdown** - Context-aware lifecycle
-- **Middleware** - Request logging, metrics, recovery
-- **TLS support** - HTTPS with HTTP/2
-
-```go
-import "github.com/sergeyslonimsky/core/http2"
-
-server := http2.NewServer(":8080")
-
-server.Handle("/health", func(w http.ResponseWriter, r *http.Request) {
-    w.WriteHeader(http.StatusOK)
-    w.Write([]byte("OK"))
-})
-
-if err := server.Start(ctx); err != nil {
-    log.Fatal(err)
+type Healthchecker interface {
+    Healthcheck(ctx context.Context) error
 }
 ```
 
-### `grpc` - gRPC Server
+- **`Resource`** — components that hold connections / pools but don't block the caller (Redis, SQL, Kafka producer, OTel SDK, RabbitMQ publisher).
+- **`Runner`** — components whose primary contract is long-running background work (HTTP/gRPC servers, Kafka consumer, RabbitMQ consumer host).
+- **`Healthchecker`** — optional. Aggregated by `app.App.Healthcheck` and surfaced on `/readyz`.
 
-gRPC server with interceptors:
-- **Unary interceptors** - Request logging, auth, recovery
-- **Stream interceptors** - Bidirectional stream support
-- **Reflection** - gRPC reflection API
+Everything else in `core` is a typed wrapper that implements one or more of these interfaces and registers with [`core/app`](./app/README.md).
 
-```go
-import "github.com/sergeyslonimsky/core/grpc"
+### Two-phase lifecycle
 
-server := grpc.NewServer(":9090")
-
-// Register your services
-pb.RegisterMyServiceServer(server.Server, &myServiceImpl{})
-
-if err := server.Start(ctx); err != nil {
-    log.Fatal(err)
-}
+```
+Phase A: construct Resources, register with app.App in the order they should be shut down LAST
+Phase B: app.Run starts every Runner concurrently in errgroup; blocks on signal
+Phase C: SIGTERM → Runners shutdown LIFO (frontends first), then Resources LIFO (DB / Redis / OTel last)
 ```
 
-### `jwt` - JWT Tokens
+## Package map
 
-JWT token generation and validation with HS256:
-- **Token generation** - With custom claims
-- **Token validation** - Signature and expiration checks
-- **Claims extraction** - Type-safe claims parsing
+| Package | Role | Description | Docs |
+|---|---|---|---|
+| [`lifecycle`](./lifecycle/README.md) | Interfaces | `Resource`, `Runner`, `Healthchecker` | [docs](./lifecycle/README.md) |
+| [`app`](./app/README.md) | Orchestrator | Lifecycle entry point: `New`, `Add`, `Run` | [docs](./app/README.md) |
+| [`di`](./di/README.md) | Helper | viper config loader + thin generic Container | [docs](./di/README.md) |
+| [`http2`](./http2/README.md) | Runner | HTTP/2 server with `/livez`, `/readyz`, `/metrics` | [docs](./http2/README.md) |
+| [`grpc`](./grpc/README.md) | Runner | gRPC server with interceptors and stats handlers | [docs](./grpc/README.md) |
+| [`otel`](./otel/README.md) | Resource | OpenTelemetry SDK bootstrap (OTLP/HTTP) | [docs](./otel/README.md) |
+| [`sql`](./sql/README.md) | Resource | sqlx wrapper with pool tuning, transactions, OTel | [docs](./sql/README.md) |
+| [`sql/postgres`](./sql/postgres/README.md) | Helper | PostgreSQL DSN builder | [docs](./sql/postgres/README.md) |
+| [`redis`](./redis/README.md) | Resource | go-redis wrapper with OTel | [docs](./redis/README.md) |
+| [`kafka`](./kafka/README.md) | Runner+Resource | franz-go wrapper. Producer is Resource, Consumer is Runner | [docs](./kafka/README.md) |
+| [`rabbitmq`](./rabbitmq/README.md) | Runner+Resource | AMQP wrapper. Publisher is Resource, ConsumerHost is Runner | [docs](./rabbitmq/README.md) |
+| [`jwt`](./jwt/README.md) | Stateless | `Signer`/`Verifier` interfaces + AuthService | [docs](./jwt/README.md) |
+| [`jwt/hs256`](./jwt/hs256/README.md) | Stateless | HMAC-SHA256 implementation of jwt.Signer/Verifier | [docs](./jwt/hs256/README.md) |
+| `internal/integration` | Internal | Integration tests + testcontainers helpers (separate go module — deps don't leak to consumers) | — |
 
-```go
-import "github.com/sergeyslonimsky/core/jwt/hs256"
+## Observability — opt-in across the stack
 
-// Generate token
-signer := hs256.NewSigner("secret-key")
-token, err := signer.Sign(map[string]interface{}{
-    "user_id": 123,
-    "role": "admin",
-}, time.Hour)
+Every package that touches the network has a `WithOtel()` option that wires the appropriate upstream instrumentation library:
 
-// Validate token
-verifier := hs256.NewVerifier("secret-key")
-claims, err := verifier.Verify(token)
+| Package | Underlying integration |
+|---|---|
+| `http2` | `otelhttp.NewHandler` |
+| `grpc` | `otelgrpc.NewServerHandler` |
+| `sql` | `otelsqlx.ConnectContext` |
+| `redis` | `redisotel.InstrumentTracing` + `InstrumentMetrics` |
+| `kafka` | `kotel` hooks via `kgo.WithHooks` |
+| `rabbitmq` | manual span injection (no upstream auto-wirer yet) |
+
+All read the global `TracerProvider` / `MeterProvider` set by `otel.Setup`. **Always register `otel.Setup`'s Provider FIRST with `app.App`** so it shuts down LAST — that lets every other component flush its remaining telemetry before exporters close.
+
+For local dev or tests without a collector, pass `otel.Config{Disabled: true}` — an empty `OTelHost` with `Disabled=false` is treated as misconfiguration and returns `ErrEmptyOTelHost`.
+
+## Application lifecycle pattern
+
+A typical app structures its DI as:
+
+```
+internal/di/config/        — viper-key → typed core configs (no mapstructure tags; explicit GetString/GetDuration calls)
+internal/di/service/
+    infrastructure.go      — low-level Resources (DB, Redis, Kafka, RabbitMQ, OTel)
+    repositories.go        — depend on infrastructure
+    services.go            — depend on repositories
+    handlers.go            — depend on services
+    router.go              — depend on handlers
+    manager.go             — composes all of the above into a Manager
+cmd/service/main.go        — ~25 lines: wire Manager to http2/grpc servers, register with app.App, call a.Run()
 ```
 
-### `otel` - OpenTelemetry
+The thin generic `di.NewContainer[Config, *Manager](ctx, config.NewConfig, service.NewServiceManager)` is available for the callback-style bootstrap, but plain function calls in main work just as well. `service.NewServiceManager` follows the `di.ServicesInit[C, S]` signature — it returns `(services S, cleanup func(context.Context) error, err error)` so partial startup failures can release any already-constructed resources before the container returns.
 
-OpenTelemetry integration for distributed tracing, metrics, and logging:
-- **OTLP exporters** - HTTP exporters for traces, metrics, logs
-- **Auto-instrumentation** - Database, HTTP, gRPC
-- **Context propagation** - W3C Trace Context
+See per-package READMEs for the constructor-by-constructor migration story and the [`di`](./di/README.md) package for the configuration loader.
 
-```go
-import "github.com/sergeyslonimsky/core/otel"
+## Configuration
 
-// Initialize OpenTelemetry
-shutdown, err := otel.InitProvider(ctx, otel.Config{
-    ServiceName: "my-service",
-    Endpoint: "localhost:4318",
-})
-if err != nil {
-    log.Fatal(err)
-}
-defer shutdown(ctx)
+`core/di.NewConfig` loads viper from (in order, with later sources overriding):
 
-// Now all instrumented code will send telemetry
-```
+1. Files (`APP_CONFIG_FILE_PATHS`)
+2. Static etcd (`APP_CONFIG_ETCD_STATIC_PATHS`)
+3. Dynamic etcd with watching (`APP_CONFIG_ETCD_DYNAMIC_PATHS`)
+4. Environment variables (`AutomaticEnv` with `"." → "_"` replacer; `http.frontend.port` reads `HTTP_FRONTEND_PORT`)
 
-### `server` - Application Server
+Required env vars:
 
-Application lifecycle management:
-- **Graceful shutdown** - Signal handling (SIGTERM, SIGINT)
-- **Multiple servers** - Run HTTP and gRPC simultaneously
-- **Health checks** - Startup and readiness probes
+- `APP_ENV` — `dev`, `prod`, etc. Used in etcd paths and exposed via `cfg.GetAppEnv()`.
+- `APP_SERVICE_NAME` — used in etcd paths and as default OTel `service.name`.
 
-```go
-import "github.com/sergeyslonimsky/core/server"
-
-app := server.NewApplication()
-
-// Add HTTP server
-httpServer := http2.NewServer(":8080")
-app.AddServer(httpServer)
-
-// Add gRPC server
-grpcServer := grpc.NewServer(":9090")
-app.AddServer(grpcServer)
-
-// Run with graceful shutdown
-if err := app.Run(ctx); err != nil {
-    log.Fatal(err)
-}
-```
+See the [`di` README](./di/README.md) for the full list and details.
 
 ## Testing
 
-The library includes comprehensive test coverage with both unit tests and integration tests.
+For unit tests, prefer in-memory fakes (`miniredis`, `sqlmock`). Core's own integration tests live in `internal/integration/` (a separate Go module so testcontainers deps don't leak to consumers).
 
-### Run Unit Tests
+## Versioning
 
-```bash
-make test
-```
+`core` follows semver.
 
-### Run Integration Tests
-
-Integration tests require Docker (testcontainers):
+## Make targets
 
 ```bash
-make test-integration
+make test                # unit tests with race detector
+make test-integration    # integration tests in internal/integration (requires Docker)
+make lint                # golangci-lint
+make bench               # run benchmarks
+make gci                 # format with gofumpt + gci
 ```
-
-### Run All Tests
-
-```bash
-make test-all
-```
-
-### Run Linter
-
-```bash
-make lint
-```
-
-### Run Benchmarks
-
-```bash
-make bench
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Requirements
-
-- Go 1.25.3 or higher
-- Docker (for integration tests)
-
-## Support
-
-If you encounter any issues or have questions, please [open an issue](https://github.com/sergeyslonimsky/core/issues).
+MIT — see [LICENSE](./LICENSE).
