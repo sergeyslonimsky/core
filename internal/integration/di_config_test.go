@@ -136,8 +136,8 @@ func TestNewConfig_EtcdStatic(t *testing.T) {
 	defer cleanup()
 
 	// Prepare test data in etcd
-	testData := map[string]interface{}{
-		"database": map[string]interface{}{
+	testData := map[string]any{
+		"database": map[string]any{
 			"host": "etcd-db-host",
 			"port": 3306,
 		},
@@ -176,8 +176,8 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 	defer cleanup()
 
 	// Prepare first config
-	baseConfig := map[string]interface{}{
-		"database": map[string]interface{}{
+	baseConfig := map[string]any{
+		"database": map[string]any{
 			"host": "base-host",
 			"port": 5432,
 		},
@@ -185,11 +185,11 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/base.yaml", baseConfig)
 
 	// Prepare second config (should override first)
-	overrideConfig := map[string]interface{}{
-		"database": map[string]interface{}{
+	overrideConfig := map[string]any{
+		"database": map[string]any{
 			"host": "override-host",
 		},
-		"redis": map[string]interface{}{
+		"redis": map[string]any{
 			"host": "redis-host",
 		},
 	}
@@ -225,13 +225,13 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	defer cleanup()
 
 	// Prepare initial data
-	initialData := map[string]interface{}{
-		"limits": map[string]interface{}{
+	initialData := map[string]any{
+		"limits": map[string]any{
 			"rateLimit": 100,
 		},
-		"app": map[string]interface{}{
+		"app": map[string]any{
 			"env": "dev",
-			"service": map[string]interface{}{
+			"service": map[string]any{
 				"name": "dynamic-service",
 			},
 		},
@@ -251,13 +251,13 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	assert.Equal(t, 100, cfg.GetInt("limits.rateLimit"))
 
 	// Update value in etcd
-	updatedData := map[string]interface{}{
-		"limits": map[string]interface{}{
+	updatedData := map[string]any{
+		"limits": map[string]any{
 			"rateLimit": 200,
 		},
-		"app": map[string]interface{}{
+		"app": map[string]any{
 			"env": "dev",
-			"service": map[string]interface{}{
+			"service": map[string]any{
 				"name": "dynamic-service",
 			},
 		},
@@ -282,16 +282,16 @@ func TestNewConfig_FullScenario(t *testing.T) {
 	defer cleanup()
 
 	// Prepare static etcd config
-	staticConfig := map[string]interface{}{
-		"database": map[string]interface{}{
+	staticConfig := map[string]any{
+		"database": map[string]any{
 			"host": "etcd-static-host",
 		},
 	}
 	testhelpers.PutEtcdValue(t, endpoint, "prod/full-service/static.yaml", staticConfig)
 
 	// Prepare dynamic etcd config
-	dynamicConfig := map[string]interface{}{
-		"limits": map[string]interface{}{
+	dynamicConfig := map[string]any{
+		"limits": map[string]any{
 			"rateLimit": 500,
 		},
 	}
@@ -328,14 +328,14 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 	defer cleanup()
 
 	// Prepare etcd config that tries to override app.env and app.service.name
-	configWithOverrides := map[string]interface{}{
-		"database": map[string]interface{}{
+	configWithOverrides := map[string]any{
+		"database": map[string]any{
 			"host": "correct-db-host",
 			"port": 5432,
 		},
-		"app": map[string]interface{}{
+		"app": map[string]any{
 			"env": "wrong-env", // ← Should NOT override env var
-			"service": map[string]interface{}{
+			"service": map[string]any{
 				"name": "wrong-service", // ← Should NOT override env var
 			},
 		},

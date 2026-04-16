@@ -71,6 +71,7 @@ func runConsumerAsync(
 	t.Cleanup(func() {
 		cancel()
 		<-errCh
+
 		_ = consumer.Shutdown(context.Background())
 	})
 
@@ -240,7 +241,7 @@ func TestConsumer_ProcessorError_DefaultSkipPolicy(t *testing.T) {
 	// The consumer must not crash on Process errors. With no ErrorHandler,
 	// records are logged + skipped, and Run exits cleanly on ctx cancel.
 	err = consumer.Run(ctx)
-	assert.NoError(t, err, "Run should return nil on ctx cancel even when every Process call fails")
+	require.NoError(t, err, "Run should return nil on ctx cancel even when every Process call fails")
 
 	_ = consumer.Shutdown(context.Background())
 }
@@ -438,7 +439,7 @@ func TestConsumer_ContextCancellation(t *testing.T) {
 
 	select {
 	case err := <-done:
-		assert.NoError(t, err, "Run should return nil on ctx cancellation")
+		require.NoError(t, err, "Run should return nil on ctx cancellation")
 	case <-time.After(testhelpers.ShortTestTimeout):
 		t.Fatal("consumer did not stop within timeout after cancel")
 	}

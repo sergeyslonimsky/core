@@ -66,7 +66,7 @@ func SetupEtcdContainer(t *testing.T) (string, func()) {
 }
 
 // PutEtcdValue writes a value to etcd for testing.
-func PutEtcdValue(t *testing.T, endpoint, key string, data map[string]interface{}) {
+func PutEtcdValue(t *testing.T, endpoint, key string, data map[string]any) {
 	t.Helper()
 
 	cli, err := clientv3.New(clientv3.Config{
@@ -166,11 +166,16 @@ func ConsumeTestMessages(
 
 	defer client.Close()
 
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
+	defer cancel()
+
 	var records []TestRecord
 	for len(records) < count {
-		fetches := client.PollFetches(t.Context())
+		fetches := client.PollFetches(ctx)
 		if err := fetches.Err(); err != nil {
-			require.NoError(t, err, "failed to poll messages from topic %s", topic)
+			require.NoError(t, err,
+				"failed to poll messages from topic %s (got %d/%d records before timeout)",
+				topic, len(records), count)
 		}
 
 		fetches.EachRecord(func(r *kgo.Record) {
@@ -240,10 +245,12 @@ func CreateRabbitMQQueue(t *testing.T, amqpURL, queueName string, durable bool) 
 
 	conn, err := amqp.Dial(amqpURL)
 	require.NoError(t, err, "failed to connect to RabbitMQ")
+
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	require.NoError(t, err, "failed to open channel")
+
 	defer ch.Close()
 
 	_, err = ch.QueueDeclare(
@@ -263,10 +270,12 @@ func CreateRabbitMQExchange(t *testing.T, amqpURL, exchangeName, exchangeType st
 
 	conn, err := amqp.Dial(amqpURL)
 	require.NoError(t, err, "failed to connect to RabbitMQ")
+
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	require.NoError(t, err, "failed to open channel")
+
 	defer ch.Close()
 
 	err = ch.ExchangeDeclare(
@@ -287,10 +296,12 @@ func BindRabbitMQQueue(t *testing.T, amqpURL, queueName, exchangeName, routingKe
 
 	conn, err := amqp.Dial(amqpURL)
 	require.NoError(t, err, "failed to connect to RabbitMQ")
+
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	require.NoError(t, err, "failed to open channel")
+
 	defer ch.Close()
 
 	err = ch.QueueBind(
@@ -316,16 +327,18 @@ type RabbitMQMessage struct {
 func PublishRabbitMQMessage(
 	t *testing.T,
 	amqpURL, exchange, routingKey string,
-	message interface{},
+	message any,
 ) {
 	t.Helper()
 
 	conn, err := amqp.Dial(amqpURL)
 	require.NoError(t, err, "failed to connect to RabbitMQ")
+
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	require.NoError(t, err, "failed to open channel")
+
 	defer ch.Close()
 
 	body, err := json.Marshal(message)
@@ -355,10 +368,12 @@ func ConsumeRabbitMQMessages(
 
 	conn, err := amqp.Dial(amqpURL)
 	require.NoError(t, err, "failed to connect to RabbitMQ")
+
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	require.NoError(t, err, "failed to open channel")
+
 	defer ch.Close()
 
 	msgs, err := ch.Consume(

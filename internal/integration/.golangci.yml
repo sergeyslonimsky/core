@@ -1,0 +1,85 @@
+# golangci-lint config for the integration-tests module.
+#
+# The integration module exists ONLY to host testcontainers-backed tests —
+# it's not consumable code. Rules that make sense for library code
+# (exhaustruct on every external struct, "no local replace") are actively
+# harmful here, so we start from the same base as the root module and
+# layer in test-appropriate relaxations.
+version: "2"
+run:
+  go: "1.25"
+  allow-parallel-runners: true
+linters:
+  default: all
+  disable:
+    - noinlineerr
+    - ireturn
+    - wsl
+    # exhaustruct: integration tests call into external libraries
+    # (testcontainers, amqp091, etcd clientv3) whose public structs have
+    # dozens of optional fields. Listing every zero-value on every use
+    # site is pure noise here. The root module keeps exhaustruct on
+    # because its public types are narrower and structs are wired once.
+    - exhaustruct
+    # depguard: this module exists only to host integration tests against
+    # the root module, testcontainers, and the broker SDKs — every import
+    # it uses is intentional. A default depguard allow-list would flag
+    # every one of them. Disabling entirely is simpler than re-listing
+    # them.
+    - depguard
+  settings:
+    gosec:
+      # Same rationale as the root .golangci.yml.
+      excludes:
+        - G117
+    gomoddirectives:
+      # `replace github.com/sergeyslonimsky/core => ../../` is required
+      # so integration tests pick up uncommitted changes in the root
+      # module during local development and CI of the same branch.
+      replace-local: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test files relax a cluster of linters that only make sense for
+      # production code.
+      - path: (.+_test.go|testhelpers/.+\.go)
+        linters:
+          - funlen
+          - goconst
+          - varnamelen
+          - godox
+          - err113
+          - gosec
+          - bodyclose
+          - unparam
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/sergeyslonimsky/core)
+      custom-order: true
+    golines:
+      max-len: 120
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

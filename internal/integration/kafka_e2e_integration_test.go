@@ -178,6 +178,7 @@ func TestE2E_MultiplePartitions(t *testing.T) {
 	require.Len(t, records, totalMessages)
 
 	partitionsByKey := make(map[string]int32)
+
 	for _, r := range records {
 		key := string(r.Key)
 		if partition, seen := partitionsByKey[key]; seen {
@@ -351,13 +352,9 @@ func TestE2E_ErrorHandler_RetryDoesNotCommit(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		_ = phase2.Run(ctx2)
-	}()
+	})
 
 	require.Eventually(t, func() bool { return phase2Processor.count.Load() >= 1 },
 		testhelpers.DefaultTestTimeout, 100*time.Millisecond,
@@ -365,5 +362,6 @@ func TestE2E_ErrorHandler_RetryDoesNotCommit(t *testing.T) {
 
 	cancel2()
 	wg.Wait()
+
 	_ = phase2.Shutdown(context.Background())
 }
