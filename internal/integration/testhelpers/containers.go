@@ -292,6 +292,55 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	return amqpURL, cleanup
 }
 
+// WaitForRabbitMQQueue polls until the named queue exists on the broker
+// (via passive declare). Use this after launching a rabbitmq.ConsumerHost
+// in a goroutine to guarantee the consumer has declared its topology
+// before the test publishes — otherwise direct/default-exchange messages
+// sent before the binding exists are silently dropped.
+func WaitForRabbitMQQueue(t *testing.T, amqpURL, queueName string) {
+	t.Helper()
+
+	const (
+		timeout  = 30 * time.Second
+		interval = 100 * time.Millisecond
+	)
+
+	deadline := time.Now().Add(timeout)
+
+	var lastErr error
+
+	for {
+		lastErr = tryPassiveDeclare(amqpURL, queueName)
+		if lastErr == nil {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			require.NoError(t, lastErr, "queue %q not declared within %s", queueName, timeout)
+		}
+
+		time.Sleep(interval)
+	}
+}
+
+func tryPassiveDeclare(amqpURL, queueName string) error {
+	conn, err := amqp.Dial(amqpURL)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	_, err = ch.QueueDeclarePassive(queueName, false, false, false, false, nil)
+
+	return err
+}
+
 func waitForAMQPReady(t *testing.T, amqpURL string) {
 	t.Helper()
 

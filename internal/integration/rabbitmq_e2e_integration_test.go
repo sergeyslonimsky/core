@@ -149,6 +149,7 @@ func TestRabbitMQE2E_PublishToQueueAndConsume(t *testing.T) {
 	startConsumerHost(t, cfg, func(h *rabbitmq.ConsumerHost) {
 		h.AddConsumer(consumer)
 	})
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queueName)
 
 	pubCtx, pubCancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer pubCancel()
@@ -219,6 +220,7 @@ func TestRabbitMQE2E_DirectExchange(t *testing.T) {
 	startConsumerHost(t, cfg, func(h *rabbitmq.ConsumerHost) {
 		h.AddConsumer(consumer)
 	})
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queueName)
 
 	pubCtx, pubCancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer pubCancel()
@@ -288,6 +290,8 @@ func TestRabbitMQE2E_FanoutExchange(t *testing.T) {
 		h.AddConsumer(mkConsumer(queue1, proc1))
 		h.AddConsumer(mkConsumer(queue2, proc2))
 	})
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queue1)
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queue2)
 
 	pubCtx, pubCancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer pubCancel()
@@ -372,6 +376,7 @@ func TestRabbitMQE2E_WorkerPool(t *testing.T) {
 	startConsumerHost(t, cfg, func(h *rabbitmq.ConsumerHost) {
 		h.AddConsumer(consumer)
 	})
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queueName)
 
 	pubCtx, pubCancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer pubCancel()
@@ -423,6 +428,7 @@ func TestRabbitMQE2E_ProcessorErrorIsNacked(t *testing.T) {
 	startConsumerHost(t, cfg, func(h *rabbitmq.ConsumerHost) {
 		h.AddConsumer(consumer)
 	})
+	testhelpers.WaitForRabbitMQQueue(t, amqpURL, queueName)
 
 	pubCtx, pubCancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer pubCancel()
