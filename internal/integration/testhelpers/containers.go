@@ -253,7 +253,11 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	req := testcontainers.ContainerRequest{
 		Image:        "rabbitmq:3.12-management-alpine",
 		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
-		WaitingFor:   wait.ForLog("Server startup complete"),
+		// "Server startup complete" fires before the AMQP port actually
+		// accepts connections under CI load. Waiting for the port itself
+		// is the real readiness signal and avoids connection-reset flakes
+		// when publishers Dial right after container start.
+		WaitingFor: wait.ForListeningPort("5672/tcp").WithStartupTimeout(DefaultTestTimeout),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
