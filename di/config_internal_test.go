@@ -302,7 +302,7 @@ func TestResolveDynamicConfigPaths(t *testing.T) {
 func TestApplyEtcdUpdate(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{ //nolint:exhaustruct // mu has a valid zero value
+	cfg := &Config{
 		configStorage: viper.New(),
 	}
 
@@ -319,7 +319,7 @@ func TestApplyEtcdUpdate(t *testing.T) {
 func TestApplyEtcdUpdateMalformedPayload(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{ //nolint:exhaustruct // mu has a valid zero value
+	cfg := &Config{
 		configStorage: viper.New(),
 	}
 	cfg.configStorage.Set("feature.enabled", true)
@@ -340,7 +340,7 @@ func TestApplyEtcdUpdateMalformedPayload(t *testing.T) {
 func TestConfigConcurrentReadersAndWriters(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{ //nolint:exhaustruct // mu has a valid zero value
+	cfg := &Config{
 		configStorage: viper.New(),
 	}
 
@@ -362,25 +362,17 @@ func TestConfigConcurrentReadersAndWriters(t *testing.T) {
 	)
 
 	// Writer goroutine simulates the watcher merging updates.
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		for i := 0; i < iterations; i++ {
+	wg.Go(func() {
+		for i := range iterations {
 			applyEtcdUpdate(cfg, "prod/svc/dynamic.yaml", payload[i%len(payload)])
 		}
 
 		close(done)
-	}()
+	})
 
 	// Reader goroutines hit every typed getter concurrently with the writer.
-	for r := 0; r < readers; r++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+	for range readers {
+		wg.Go(func() {
 			for {
 				select {
 				case <-done:
@@ -391,7 +383,7 @@ func TestConfigConcurrentReadersAndWriters(t *testing.T) {
 					_ = cfg.GetString("feature.enabled")
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

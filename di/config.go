@@ -44,6 +44,7 @@ const (
 	// doubles on consecutive failures, capped at maxWatchBackoff.
 	initialWatchBackoff = 1 * time.Second
 	maxWatchBackoff     = 30 * time.Second
+	backoffGrowthFactor = 2
 )
 
 // AppEnvDev is the default value for app.env when no environment is set
@@ -439,6 +440,7 @@ func loadFromEtcdStatic(ctx context.Context, v *viper.Viper, appEnv, serviceName
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -525,18 +527,15 @@ func watchEtcdKeys(ctx context.Context, cfg *Config, cli *clientv3.Client, paths
 		_ = cli.Close()
 	}()
 
-	var wg sync.WaitGroup
+	var watchers sync.WaitGroup
 
 	for _, key := range paths {
-		wg.Add(1)
-
-		go func(key string) {
-			defer wg.Done()
+		watchers.Go(func() {
 			watchSingleKey(ctx, cfg, cli, key)
-		}(key)
+		})
 	}
 
-	wg.Wait()
+	watchers.Wait()
 
 	log.Printf("stopping etcd config watcher: %v", ctx.Err())
 }
@@ -594,7 +593,7 @@ func streamKeyEvents(ctx context.Context, cfg *Config, cli *clientv3.Client, key
 		// error-response, so break out here — any remaining receives
 		// would be on an already-closed channel.
 		if err := resp.Err(); err != nil {
-			return err
+			return fmt.Errorf("etcd watch response: %w", err)
 		}
 
 		for _, ev := range resp.Events {
@@ -638,7 +637,7 @@ func sleepWithCtx(ctx context.Context, d time.Duration) bool {
 
 // nextBackoff doubles current up to maxWatchBackoff.
 func nextBackoff(current time.Duration) time.Duration {
-	next := current * 2
+	next := current * backoffGrowthFactor
 	if next > maxWatchBackoff {
 		return maxWatchBackoff
 	}
