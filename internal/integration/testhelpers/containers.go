@@ -69,12 +69,7 @@ func SetupEtcdContainer(t *testing.T) (string, func()) {
 func PutEtcdValue(t *testing.T, endpoint, key string, data map[string]any) {
 	t.Helper()
 
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{endpoint},
-		DialTimeout: ShortTestTimeout,
-	})
-	require.NoError(t, err, "failed to create etcd client")
-
+	cli := newEtcdClientForTest(t, endpoint)
 	defer cli.Close()
 
 	yamlData, err := yaml.Marshal(data)
@@ -85,6 +80,51 @@ func PutEtcdValue(t *testing.T, endpoint, key string, data map[string]any) {
 
 	_, err = cli.Put(ctx, key, string(yamlData))
 	require.NoError(t, err, "failed to put value in etcd")
+}
+
+// DeleteEtcdKey removes a key from etcd.
+func DeleteEtcdKey(t *testing.T, endpoint, key string) {
+	t.Helper()
+
+	cli := newEtcdClientForTest(t, endpoint)
+	defer cli.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), ShortTestTimeout)
+	defer cancel()
+
+	_, err := cli.Delete(ctx, key)
+	require.NoError(t, err, "failed to delete key from etcd")
+}
+
+// CompactEtcdAtLatest forces a compaction at the current revision, which
+// causes any active Watch on that range to emit a Canceled response with
+// rpctypes.ErrCompacted. Used to exercise reconnect paths.
+func CompactEtcdAtLatest(t *testing.T, endpoint string) {
+	t.Helper()
+
+	cli := newEtcdClientForTest(t, endpoint)
+	defer cli.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), ShortTestTimeout)
+	defer cancel()
+
+	resp, err := cli.Get(ctx, "/")
+	require.NoError(t, err, "failed to read current revision for compaction")
+
+	_, err = cli.Compact(ctx, resp.Header.Revision, clientv3.WithCompactPhysical())
+	require.NoError(t, err, "failed to compact etcd")
+}
+
+func newEtcdClientForTest(t *testing.T, endpoint string) *clientv3.Client {
+	t.Helper()
+
+	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct // test helper
+		Endpoints:   []string{endpoint},
+		DialTimeout: ShortTestTimeout,
+	})
+	require.NoError(t, err, "failed to create etcd client")
+
+	return cli
 }
 
 // SetupKafkaContainer starts a Kafka-compatible container for integration testing.

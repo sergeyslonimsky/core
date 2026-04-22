@@ -264,12 +264,11 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	}
 	testhelpers.PutEtcdValue(t, endpoint, "test/test-service/dynamic.yaml", updatedData)
 
-	// Wait for watch interval + buffer (etcd watches every 5 seconds)
-	time.Sleep(7 * time.Second)
-
-	// Verify value was updated
-	updatedValue := cfg.GetInt("limits.rateLimit")
-	assert.Equal(t, 200, updatedValue, "value should be updated via watching")
+	// Native clientv3.Watch delivers events within milliseconds — poll with
+	// a short interval rather than sleeping a fixed duration.
+	require.Eventually(t, func() bool {
+		return cfg.GetInt("limits.rateLimit") == 200
+	}, 5*time.Second, 50*time.Millisecond, "value should be updated via watching")
 }
 
 // TestNewConfig_FullScenario tests complete scenario with files + static etcd + dynamic etcd.
