@@ -90,6 +90,13 @@ jobs:
         working-directory: internal/integration
         run: go test -race -count=1 -timeout=15m -v ./...
 
+  # Coverage combines unit + integration profiles so codecov's patch coverage
+  # reflects what's actually tested. Integration tests live in a separate
+  # module; -coverpkg=github.com/sergeyslonimsky/core/... measures the parent
+  # module's packages from inside that module (replace directive makes it a
+  # local dep). Upload as two files with distinct flags so codecov tracks
+  # unit vs integration coverage separately while merging them for the
+  # per-PR patch score.
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -103,14 +110,30 @@ jobs:
 
       - run: go mod download
 
-      - name: Run tests with coverage
-        run: go test -race -count=1 -timeout=2m -short -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Run unit tests with coverage
+        run: go test -race -count=1 -timeout=2m -short -coverprofile=coverage-unit.out -covermode=atomic ./...
 
-      - name: Upload coverage to Codecov
+      - name: Verify Docker availability
+        run: docker version
+
+      - name: Run integration tests with coverage
+        working-directory: internal/integration
+        run: go test -race -count=1 -timeout=15m -coverpkg=github.com/sergeyslonimsky/core/... -coverprofile=coverage-integration.out -covermode=atomic ./...
+
+      - name: Upload unit coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.out
+          files: ./coverage-unit.out
           flags: unittests
-          name: codecov-umbrella
+          name: codecov-unit
+          fail_ci_if_error: false
+
+      - name: Upload integration coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./internal/integration/coverage-integration.out
+          flags: integration
+          name: codecov-integration
           fail_ci_if_error: false
