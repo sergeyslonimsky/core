@@ -253,11 +253,14 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	req := testcontainers.ContainerRequest{
 		Image:        "rabbitmq:3.12-management-alpine",
 		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
-		// "Server startup complete" fires before the AMQP port actually
-		// accepts connections under CI load. Waiting for the port itself
-		// is the real readiness signal and avoids connection-reset flakes
-		// when publishers Dial right after container start.
-		WaitingFor: wait.ForListeningPort("5672/tcp").WithStartupTimeout(DefaultTestTimeout),
+		// Container-side readiness: port listens AND Erlang logs the
+		// "Server startup complete" line. Even after both, opening an AMQP
+		// channel can briefly fail under CI load, so we do a follow-up
+		// active dial below.
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("5672/tcp"),
+			wait.ForLog("Server startup complete"),
+		),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -274,6 +277,12 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 
 	amqpURL := "amqp://guest:guest@" + net.JoinHostPort(hostIP, mappedPort.Port())
 
+	// Probe: container-level readiness says the port listens and the
+	// startup log is out, but the AMQP layer can still fail channel-open
+	// for a fraction of a second under CI load. Dial with retries so
+	// callers see a URL that's truly ready.
+	waitForAMQPReady(t, amqpURL)
+
 	cleanup := func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("failed to terminate RabbitMQ container: %v", err)
@@ -281,6 +290,40 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	}
 
 	return amqpURL, cleanup
+}
+
+func waitForAMQPReady(t *testing.T, amqpURL string) {
+	t.Helper()
+
+	const (
+		probeTimeout  = 30 * time.Second
+		probeInterval = 200 * time.Millisecond
+	)
+
+	deadline := time.Now().Add(probeTimeout)
+
+	for {
+		conn, err := amqp.Dial(amqpURL)
+		if err == nil {
+			ch, chErr := conn.Channel()
+			if chErr == nil {
+				_ = ch.Close()
+				_ = conn.Close()
+
+				return
+			}
+
+			_ = conn.Close()
+
+			err = chErr
+		}
+
+		if time.Now().After(deadline) {
+			require.NoError(t, err, "RabbitMQ did not become AMQP-ready within %s", probeTimeout)
+		}
+
+		time.Sleep(probeInterval)
+	}
 }
 
 // CreateRabbitMQQueue creates a queue for testing.
