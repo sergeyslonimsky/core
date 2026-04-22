@@ -63,7 +63,7 @@ Loaded in order, with later sources overriding earlier ones for the same keys:
 
 1. **File** — `app.config.file.paths` (comma-separated) or `app.config.file.path`. YAML by default.
 2. **Static etcd** — `app.config.etcd.static.paths` + `app.config.etcd.endpoint`. Loaded once, no watching.
-3. **Dynamic etcd** — `app.config.etcd.dynamic.paths`. Watched at `defaultEtcdWatchInterval` (5s) until context cancellation.
+3. **Dynamic etcd** — `app.config.etcd.dynamic.paths`. Subscribed via native `clientv3.Watch` on every path (not just the first) until context cancellation. Only PUT events are applied — DELETE is ignored. On watch disconnect (compaction, network drop, server restart), each watcher reconnects with exponential backoff (1s → 30s cap) and re-syncs the key via Get so updates missed during the outage are caught up.
 4. **Environment variables** — always override. `AutomaticEnv` with `"." → "_"` replacer. So `http.frontend.port` reads `HTTP_FRONTEND_PORT`.
 
 ## API

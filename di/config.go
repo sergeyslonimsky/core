@@ -15,22 +15,37 @@
 //
 // Config loads values in order from file → static etcd → dynamic etcd, and
 // supports Watch* subscriptions for dynamic keys that may change at runtime.
+//
+// Etcd access uses the native etcd v3 client directly (go.etcd.io/etcd/client/v3)
+// rather than viper/remote, which transitively pulls in consul/serf/crypt.
 package di
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/spf13/viper"
-	_ "github.com/spf13/viper/remote" // Required to enable viper remote config support for etcd
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-const defaultEtcdWatchInterval = 5 * time.Second
+const (
+	defaultEtcdDialTimeout    = 5 * time.Second
+	defaultEtcdRequestTimeout = 5 * time.Second
+
+	// Watch reconnect backoff. On disconnect (network drop, server restart,
+	// compaction) the per-key goroutine sleeps and reopens the watch — delay
+	// doubles on consecutive failures, capped at maxWatchBackoff.
+	initialWatchBackoff = 1 * time.Second
+	maxWatchBackoff     = 30 * time.Second
+	backoffGrowthFactor = 2
+)
 
 // AppEnvDev is the default value for app.env when no environment is set
 // via config or environment variable.
@@ -43,6 +58,7 @@ var (
 	ErrEtcdEndpointRequired  = errors.New("etcd endpoint is required when using etcd")
 	ErrEmptyEtcdStaticPaths  = errors.New("etcd static paths is set but empty after parsing")
 	ErrEmptyEtcdDynamicPaths = errors.New("etcd dynamic paths is set but empty after parsing")
+	ErrEtcdKeyNotFound       = errors.New("etcd key not found")
 )
 
 // Config wraps a *viper.Viper with a read-write mutex so dynamic etcd updates
@@ -104,7 +120,7 @@ func NewConfig(ctx context.Context) (*Config, error) {
 
 	// 2. Load static etcd configs (no watching)
 	if v.GetString("app.config.etcd.static.paths") != "" {
-		if err := loadFromEtcdStatic(v, appEnv, serviceName); err != nil {
+		if err := loadFromEtcdStatic(ctx, v, appEnv, serviceName); err != nil {
 			return nil, fmt.Errorf("load from etcd static: %w", err)
 		}
 	}
@@ -340,7 +356,71 @@ func loadFromFile(v *viper.Viper) error {
 	return nil
 }
 
-func loadFromEtcdStatic(v *viper.Viper, appEnv, serviceName string) error {
+// mergeBytesIntoViper parses data as configType (yaml/json/toml/...) and
+// copies every resulting key into v via Set. Pure function — no I/O.
+func mergeBytesIntoViper(v *viper.Viper, data []byte, configType string) error {
+	tempV := viper.New()
+	tempV.SetConfigType(configType)
+
+	if err := tempV.ReadConfig(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+
+	for _, key := range tempV.AllKeys() {
+		v.Set(key, tempV.Get(key))
+	}
+
+	return nil
+}
+
+// newEtcdClient builds a clientv3.Client for a single endpoint.
+func newEtcdClient(endpoint string) (*clientv3.Client, error) {
+	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct // zero values are fine for unused fields
+		Endpoints:   []string{endpoint},
+		DialTimeout: defaultEtcdDialTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create etcd client: %w", err)
+	}
+
+	return cli, nil
+}
+
+// readEtcdKey fetches a single key from etcd and returns its value. Returns
+// ErrEtcdKeyNotFound when the key has no value (matches the old viper/remote
+// behavior, which failed on empty reads).
+func readEtcdKey(ctx context.Context, cli *clientv3.Client, key string) ([]byte, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, defaultEtcdRequestTimeout)
+	defer cancel()
+
+	resp, err := cli.Get(reqCtx, key)
+	if err != nil {
+		return nil, fmt.Errorf("get etcd key %s: %w", key, err)
+	}
+
+	if len(resp.Kvs) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrEtcdKeyNotFound, key)
+	}
+
+	return resp.Kvs[0].Value, nil
+}
+
+// readAndMergeEtcdKey reads a key from etcd and merges its parsed contents
+// into v. The config type is derived from the key's file extension.
+func readAndMergeEtcdKey(ctx context.Context, cli *clientv3.Client, v *viper.Viper, key string) error {
+	data, err := readEtcdKey(ctx, cli, key)
+	if err != nil {
+		return err
+	}
+
+	if err := mergeBytesIntoViper(v, data, getConfigTypeFromPath(key)); err != nil {
+		return fmt.Errorf("merge from %s: %w", key, err)
+	}
+
+	return nil
+}
+
+func loadFromEtcdStatic(ctx context.Context, v *viper.Viper, appEnv, serviceName string) error {
 	configPathsStr := v.GetString("app.config.etcd.static.paths")
 	if configPathsStr == "" {
 		return nil // No static etcd configs to load
@@ -356,29 +436,19 @@ func loadFromEtcdStatic(v *viper.Viper, appEnv, serviceName string) error {
 		return ErrEtcdEndpointRequired
 	}
 
-	// Read every path via a temporary viper instance and merge into the
-	// main one via Set. This keeps merge semantics identical across the
-	// first and subsequent iterations — the previous "first direct, rest
-	// via tempV" branch was gated on `v.AllKeys() == nil`, which is
-	// effectively never true after AutomaticEnv + SetDefault, leaving the
-	// "direct" branch unreachable.
+	cli, err := newEtcdClient(endpoint)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = cli.Close()
+	}()
+
 	for _, configPath := range configPaths {
 		fullPath := buildEtcdPath(appEnv, serviceName, configPath)
-		configType := getConfigTypeFromPath(fullPath)
-
-		tempV := viper.New()
-		if err := tempV.AddRemoteProvider("etcd3", endpoint, fullPath); err != nil {
-			return fmt.Errorf("add remote provider for %s: %w", fullPath, err)
-		}
-
-		tempV.SetConfigType(configType)
-
-		if err := tempV.ReadRemoteConfig(); err != nil {
-			return fmt.Errorf("read remote config from %s: %w", fullPath, err)
-		}
-
-		for _, key := range tempV.AllKeys() {
-			v.Set(key, tempV.Get(key))
+		if err := readAndMergeEtcdKey(ctx, cli, v, fullPath); err != nil {
+			return err
 		}
 	}
 
@@ -400,23 +470,28 @@ func loadFromEtcdDynamic(ctx context.Context, cfg *Config, appEnv, serviceName s
 		return ErrEtcdEndpointRequired
 	}
 
-	watchConfigType, err := mergeDynamicConfigs(
-		cfg.configStorage,
-		endpoint,
-		appEnv,
-		serviceName,
-		configPaths,
-	)
+	cli, err := newEtcdClient(endpoint)
 	if err != nil {
 		return err
 	}
 
-	// viper's WatchRemoteConfig polls only the FIRST registered remote
-	// provider. For multi-path dynamic setups, only the first path gets
-	// live reload; subsequent paths are merged once at startup.
-	cfg.configStorage.SetConfigType(watchConfigType)
+	fullPaths := make([]string, 0, len(configPaths))
 
-	go watchRemoteConfig(ctx, cfg)
+	for _, configPath := range configPaths {
+		fullPath := buildEtcdPath(appEnv, serviceName, configPath)
+
+		if err := readAndMergeEtcdKey(ctx, cli, cfg.configStorage, fullPath); err != nil {
+			_ = cli.Close()
+
+			return err
+		}
+
+		fullPaths = append(fullPaths, fullPath)
+	}
+
+	// Native clientv3.Watch covers every dynamic path — unlike viper's
+	// WatchRemoteConfig, which only polled the first registered provider.
+	go watchEtcdKeys(ctx, cfg, cli, fullPaths)
 
 	return nil
 }
@@ -444,90 +519,138 @@ func resolveDynamicConfigPaths(v *viper.Viper) ([]string, error) {
 	return nil, nil
 }
 
-// mergeDynamicConfigs loads every dynamic path and merges into the main
-// viper. The FIRST path is read directly into the main viper's kvstore
-// (via ReadRemoteConfig) — this is the only path the watcher can live-
-// reload because viper's WatchRemoteConfig polls the first registered
-// provider and updates v.kvstore; values injected via v.Set land in
-// v.override, which has higher priority than kvstore, so reads of those
-// keys would not see remote updates. Subsequent paths therefore can only
-// be used for initial-load merge (via tempV + Set) and are not watched.
-//
-// Returns the config type of the first path (used for SetConfigType so
-// WatchRemoteConfig can parse incoming payloads).
-func mergeDynamicConfigs(
-	v *viper.Viper,
-	endpoint, appEnv, serviceName string,
-	configPaths []string,
-) (string, error) {
-	var watchConfigType string
+// watchEtcdKeys spawns one watcher per key, each of which reconnects with
+// exponential backoff on disconnect. Exits when ctx is cancelled, then
+// closes the shared client.
+func watchEtcdKeys(ctx context.Context, cfg *Config, cli *clientv3.Client, paths []string) {
+	defer func() {
+		_ = cli.Close()
+	}()
 
-	for idx, configPath := range configPaths {
-		fullPath := buildEtcdPath(appEnv, serviceName, configPath)
-		configType := getConfigTypeFromPath(fullPath)
+	var watchers sync.WaitGroup
 
-		if idx == 0 {
-			// First path: register + read into main viper so the watcher
-			// (which polls the first provider and updates v.kvstore) can
-			// observe remote updates.
-			if err := v.AddRemoteProvider("etcd3", endpoint, fullPath); err != nil {
-				return "", fmt.Errorf("add remote provider for %s: %w", fullPath, err)
-			}
+	for _, key := range paths {
+		watchers.Go(func() {
+			watchSingleKey(ctx, cfg, cli, key)
+		})
+	}
 
-			v.SetConfigType(configType)
+	watchers.Wait()
 
-			if err := v.ReadRemoteConfig(); err != nil {
-				return "", fmt.Errorf("read remote config from %s: %w", fullPath, err)
-			}
+	log.Printf("stopping etcd config watcher: %v", ctx.Err())
+}
 
-			watchConfigType = configType
+// watchSingleKey streams events for one key, reconnecting on any channel
+// close (compaction, network drop, server restart) with exponential
+// backoff. After every reconnect, re-syncs the value via Get so state
+// catches up on updates missed while disconnected.
+func watchSingleKey(ctx context.Context, cfg *Config, cli *clientv3.Client, key string) {
+	backoff := initialWatchBackoff
+
+	for ctx.Err() == nil {
+		streamErr := streamKeyEvents(ctx, cfg, cli, key)
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Jitter on the delay so that a fleet of services with this config
+		// module doesn't synchronize their reconnect storms when etcd comes
+		// back up.
+		delay := backoff + rand.N(backoff/2+1) //nolint:gosec // not security-sensitive
+
+		log.Printf("etcd watch for %s ended (%v); reconnecting in %v", key, streamErr, delay)
+
+		if !sleepWithCtx(ctx, delay) {
+			return
+		}
+
+		// After a reconnect, re-sync via Get — if etcd compacted updates
+		// during the disconnect, Watch alone would miss them.
+		if err := resyncKey(ctx, cfg, cli, key); err != nil {
+			log.Printf("etcd resync for %s failed: %v", key, err)
+
+			backoff = nextBackoff(backoff)
 
 			continue
 		}
 
-		// Subsequent paths: initial load only (no watch). Use Set because
-		// another ReadRemoteConfig on v would overwrite v.kvstore and
-		// drop values from earlier paths.
-		tempV := viper.New()
-		if err := tempV.AddRemoteProvider("etcd3", endpoint, fullPath); err != nil {
-			return "", fmt.Errorf("add remote provider for %s: %w", fullPath, err)
+		backoff = initialWatchBackoff
+	}
+}
+
+// streamKeyEvents consumes Watch events for key until the channel closes.
+// Returns nil when the channel closes with no error set on the last
+// response (clean server-side close or ctx cancellation).
+//
+// DELETE events are intentionally ignored: the old viper/remote
+// implementation only reacted to value reads, never to removals, and
+// callers rely on that contract.
+func streamKeyEvents(ctx context.Context, cfg *Config, cli *clientv3.Client, key string) error {
+	ch := cli.Watch(ctx, key)
+
+	for resp := range ch {
+		// clientv3 closes the channel immediately after sending an
+		// error-response, so break out here — any remaining receives
+		// would be on an already-closed channel.
+		if err := resp.Err(); err != nil {
+			return fmt.Errorf("etcd watch response: %w", err)
 		}
 
-		tempV.SetConfigType(configType)
+		for _, ev := range resp.Events {
+			if ev.Type != clientv3.EventTypePut {
+				continue
+			}
 
-		if err := tempV.ReadRemoteConfig(); err != nil {
-			return "", fmt.Errorf("read remote config from %s: %w", fullPath, err)
-		}
-
-		for _, key := range tempV.AllKeys() {
-			v.Set(key, tempV.Get(key))
+			applyEtcdUpdate(cfg, key, ev.Kv.Value)
 		}
 	}
 
-	return watchConfigType, nil
+	return nil
 }
 
-// watchRemoteConfig periodically polls the last-registered remote provider
-// for updates. Exits when ctx is cancelled. Acquires cfg.mu for each poll
-// so WatchRemoteConfig's in-place map updates don't race with readers.
-func watchRemoteConfig(ctx context.Context, cfg *Config) {
-	ticker := time.NewTicker(defaultEtcdWatchInterval)
-	defer ticker.Stop()
+// resyncKey performs a fresh Get and merges the result under the write
+// lock — safe to call concurrently with reader traffic.
+func resyncKey(ctx context.Context, cfg *Config, cli *clientv3.Client, key string) error {
+	data, err := readEtcdKey(ctx, cli, key)
+	if err != nil {
+		return err
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("stopping etcd config watcher: %v", ctx.Err())
+	applyEtcdUpdate(cfg, key, data)
 
-			return
-		case <-ticker.C:
-			cfg.mu.Lock()
-			err := cfg.configStorage.WatchRemoteConfig()
-			cfg.mu.Unlock()
+	return nil
+}
 
-			if err != nil {
-				log.Printf("unable to watch remote config: %v", err)
-			}
-		}
+// sleepWithCtx blocks for d or until ctx is cancelled. Returns true if
+// the full duration elapsed, false if ctx cancelled first.
+func sleepWithCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// nextBackoff doubles current up to maxWatchBackoff.
+func nextBackoff(current time.Duration) time.Duration {
+	next := current * backoffGrowthFactor
+	if next > maxWatchBackoff {
+		return maxWatchBackoff
+	}
+
+	return next
+}
+
+// applyEtcdUpdate merges a single etcd PUT value into cfg under the write lock.
+func applyEtcdUpdate(cfg *Config, key string, value []byte) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	if err := mergeBytesIntoViper(cfg.configStorage, value, getConfigTypeFromPath(key)); err != nil {
+		log.Printf("apply etcd update for %s: %v", key, err)
 	}
 }
