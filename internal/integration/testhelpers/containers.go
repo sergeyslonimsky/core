@@ -253,14 +253,13 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	req := testcontainers.ContainerRequest{
 		Image:        "rabbitmq:3.12-management-alpine",
 		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
-		// Container-side readiness: port listens AND Erlang logs the
-		// "Server startup complete" line. Even after both, opening an AMQP
-		// channel can briefly fail under CI load, so we do a follow-up
-		// active dial below.
-		WaitingFor: wait.ForAll(
-			wait.ForListeningPort("5672/tcp"),
-			wait.ForLog("Server startup complete"),
-		),
+		// Container-level check is just "port listening". The log-based
+		// "Server startup complete" condition was dropped because under
+		// heavy parallel CI load it intermittently missed the 60s default
+		// deadline. Real AMQP readiness is verified by waitForAMQPReady
+		// below, which retries a dial+channel-open.
+		WaitingFor: wait.ForListeningPort("5672/tcp").
+			WithStartupTimeout(2 * time.Minute),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
