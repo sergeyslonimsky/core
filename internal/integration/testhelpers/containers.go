@@ -3,6 +3,7 @@ package testhelpers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -17,6 +18,11 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"gopkg.in/yaml.v3"
 )
+
+// rabbitMQStartupTimeout is the container-start budget for RabbitMQ — generous
+// so a slow Docker host under parallel test load doesn't flake the port-listen
+// wait on the default 60s deadline.
+const rabbitMQStartupTimeout = 2 * time.Minute
 
 // SetupEtcdContainer starts an etcd container for testing.
 func SetupEtcdContainer(t *testing.T) (string, func()) {
@@ -253,14 +259,13 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	req := testcontainers.ContainerRequest{
 		Image:        "rabbitmq:3.12-management-alpine",
 		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
-		// Container-side readiness: port listens AND Erlang logs the
-		// "Server startup complete" line. Even after both, opening an AMQP
-		// channel can briefly fail under CI load, so we do a follow-up
-		// active dial below.
-		WaitingFor: wait.ForAll(
-			wait.ForListeningPort("5672/tcp"),
-			wait.ForLog("Server startup complete"),
-		),
+		// Container-level check is just "port listening". The log-based
+		// "Server startup complete" condition was dropped because under
+		// heavy parallel CI load it intermittently missed the 60s default
+		// deadline. Real AMQP readiness is verified by waitForAMQPReady
+		// below, which retries a dial+channel-open.
+		WaitingFor: wait.ForListeningPort("5672/tcp").
+			WithStartupTimeout(rabbitMQStartupTimeout),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -290,6 +295,57 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 	}
 
 	return amqpURL, cleanup
+}
+
+// WaitForRabbitMQQueue polls until the named queue exists on the broker
+// (via passive declare). Use this after launching a rabbitmq.ConsumerHost
+// in a goroutine to guarantee the consumer has declared its topology
+// before the test publishes — otherwise direct/default-exchange messages
+// sent before the binding exists are silently dropped.
+func WaitForRabbitMQQueue(t *testing.T, amqpURL, queueName string) {
+	t.Helper()
+
+	const (
+		timeout  = 30 * time.Second
+		interval = 100 * time.Millisecond
+	)
+
+	deadline := time.Now().Add(timeout)
+
+	var lastErr error
+
+	for {
+		lastErr = tryPassiveDeclare(amqpURL, queueName)
+		if lastErr == nil {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			require.NoError(t, lastErr, "queue %q not declared within %s", queueName, timeout)
+		}
+
+		time.Sleep(interval)
+	}
+}
+
+func tryPassiveDeclare(amqpURL, queueName string) error {
+	conn, err := amqp.Dial(amqpURL)
+	if err != nil {
+		return fmt.Errorf("amqp dial: %w", err)
+	}
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("open channel: %w", err)
+	}
+	defer ch.Close()
+
+	if _, err := ch.QueueDeclarePassive(queueName, false, false, false, false, nil); err != nil {
+		return fmt.Errorf("passive declare %q: %w", queueName, err)
+	}
+
+	return nil
 }
 
 func waitForAMQPReady(t *testing.T, amqpURL string) {
