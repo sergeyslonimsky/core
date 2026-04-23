@@ -3,6 +3,7 @@ package testhelpers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -17,6 +18,11 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"gopkg.in/yaml.v3"
 )
+
+// rabbitMQStartupTimeout is the container-start budget for RabbitMQ — generous
+// so a slow Docker host under parallel test load doesn't flake the port-listen
+// wait on the default 60s deadline.
+const rabbitMQStartupTimeout = 2 * time.Minute
 
 // SetupEtcdContainer starts an etcd container for testing.
 func SetupEtcdContainer(t *testing.T) (string, func()) {
@@ -259,7 +265,7 @@ func SetupRabbitMQContainer(t *testing.T) (string, func()) {
 		// deadline. Real AMQP readiness is verified by waitForAMQPReady
 		// below, which retries a dial+channel-open.
 		WaitingFor: wait.ForListeningPort("5672/tcp").
-			WithStartupTimeout(2 * time.Minute),
+			WithStartupTimeout(rabbitMQStartupTimeout),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -325,19 +331,21 @@ func WaitForRabbitMQQueue(t *testing.T, amqpURL, queueName string) {
 func tryPassiveDeclare(amqpURL, queueName string) error {
 	conn, err := amqp.Dial(amqpURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("amqp dial: %w", err)
 	}
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	if err != nil {
-		return err
+		return fmt.Errorf("open channel: %w", err)
 	}
 	defer ch.Close()
 
-	_, err = ch.QueueDeclarePassive(queueName, false, false, false, false, nil)
+	if _, err := ch.QueueDeclarePassive(queueName, false, false, false, false, nil); err != nil {
+		return fmt.Errorf("passive declare %q: %w", queueName, err)
+	}
 
-	return err
+	return nil
 }
 
 func waitForAMQPReady(t *testing.T, amqpURL string) {
