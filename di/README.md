@@ -1,21 +1,10 @@
 # di
 
-viper-backed configuration loader and a thin generic `Container` wrapper. Together they handle:
+Configuration loader for services built on core. Loads from yaml files,
+env vars, and etcd v3 (static + dynamic with native push-Watch). Generic
+typed API. Lock-free reads via atomic snapshot.
 
-- Loading config from file, static etcd, and dynamic (watched) etcd.
-- Environment-variable overrides with automatic `HTTP_FRONTEND_PORT ↔ http.frontend.port` key conversion.
-- A two-step bootstrap (`initConfig → initServices`) via `NewContainer`.
-
-The package does NOT handle cleanup — every component lifecycle flows through `core/app` via `lifecycle.Resource`.
-
-## When to use
-
-- Use `di.NewConfig(ctx)` to build a viper-backed `*Config` for any service.
-- Use `di.NewContainer(...)` if you like the callback-style bootstrap (`backend-master` uses this). Otherwise call `config.NewConfig` and `service.NewManager` directly in `main.go` — the container is optional sugar.
-
-## Quickstart
-
-### Config only
+## Quick start
 
 ```go
 cfg, err := di.NewConfig(ctx)
@@ -23,160 +12,127 @@ if err != nil {
     log.Fatal(err)
 }
 
-port := cfg.GetStringOrDefault("http.frontend.port", "8080")
-writeTimeout := cfg.GetDuration("http.frontend.write_timeout")
+port := di.Get[string](cfg, "http.public.port")
+timeout := di.GetOrDefault[time.Duration](cfg, "http.timeout", 30*time.Second)
+currentRPS := di.Live[int](cfg, "limits.rps") // re-read on each call() for runtime tunables
 ```
 
-### Container
+## Sources and priority
+
+```
+env vars  >  etcd dynamic  >  etcd static  >  yaml file  >  defaults
+```
+
+Any key can be overridden via env. If env is absent, the highest-priority
+source wins: dynamic > static > file > default.
+
+| Layer         | Who manages       | When changes                              |
+|---------------|-------------------|-------------------------------------------|
+| env           | operator (deploy) | process restart                           |
+| etcd dynamic  | operator (live)   | runtime — pushed via etcd Watch           |
+| etcd static   | operator (deploy) | process restart                           |
+| yaml file     | repo / image      | image rebuild                             |
+| defaults      | core / app code   | code change                               |
+
+## Bootstrap configuration
+
+The following keys are read from **env only** (they decide where other
+configuration comes from):
+
+- `APP_ENV` (default: `dev`) — environment label, used in the etcd path
+  prefix.
+- `APP_SERVICE_NAME` — required when etcd is configured. Used in the
+  etcd path prefix.
+- `APP_CONFIG_FILE_PATHS` — comma-separated list of yaml file paths or
+  directories (directories load `config.yaml`).
+- `APP_CONFIG_FILE_PATH` — legacy single path.
+- `APP_CONFIG_ETCD_ENDPOINT` — etcd address (required when any etcd
+  path is set).
+- `APP_CONFIG_ETCD_STATIC_PATHS` — comma-separated list of paths read
+  once at startup.
+- `APP_CONFIG_ETCD_DYNAMIC_PATHS` — comma-separated list of paths
+  watched for live updates.
+- `APP_CONFIG_ETCD_PATH` — legacy single dynamic path.
+- `APP_CONFIG_ETCD_REQUEST_TIMEOUT` — Go-duration string ("5s",
+  "500ms", "1m") bounding every etcd Get during static load and
+  watcher resync. Default `5s`. A malformed value fails startup with
+  `ErrInvalidEtcdRequestTimeout`.
+
+Etcd full key = `{APP_ENV}/{APP_SERVICE_NAME}/{path}`.
+
+## Public API
 
 ```go
-import (
-    "github.com/sergeyslonimsky/core/app"
-    "github.com/sergeyslonimsky/core/di"
+func Get[T ValueType](cfg *Config, key string) T
+func GetOrDefault[T ValueType](cfg *Config, key string, def T) T
+func Live[T ValueType](cfg *Config, key string) func() T
+func LiveOrDefault[T ValueType](cfg *Config, key string, def T) func() T
+```
 
-    "myapp/internal/di/config"
-    "myapp/internal/di/service"
-)
+- `Get` — read once.
+- `GetOrDefault` — read once with a fallback.
+- `Live` — closure that re-reads on every call. Use for hot-reloadable
+  values (rate limits, feature flags) that may change at runtime via
+  etcd dynamic.
+- `LiveOrDefault` — `Live` with a fallback.
 
-func main() {
-    container, err := di.NewContainer(
-        context.Background(),
-        config.NewConfig,
-        service.NewServiceManager,
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+`ValueType` constraint:
+`string | int | int64 | bool | float64 | time.Duration | []string`.
 
-    cfg, svc := container.Config, container.Services
+Methods on `*Config`: `GetAppEnv()`, `GetServiceName()` — captured from
+env at startup, immutable for the process lifetime.
 
-    a := app.New()
-    svc.RegisterResources(a)
-    a.Add(svc.HTTPServer, svc.GRPCServer)
-    log.Fatal(a.Run())
+## Defaults semantics
+
+`GetOrDefault` returns the default **only when the key is absent or the
+stored value can't be coerced to T**. It does NOT return the default
+when the value is zero (`0`, `""`, empty slice). If you want
+zero-as-absent semantics, wrap manually:
+
+```go
+v := di.Get[int](cfg, "k")
+if v <= 0 {
+    v = fallback
 }
 ```
 
-## Config sources
+## Lifecycle
 
-Loaded in order, with later sources overriding earlier ones for the same keys:
+`NewConfig(ctx)` is **fail-fast**: errors when etcd is configured but
+unreachable, when paths can't be parsed, or when `APP_SERVICE_NAME` is
+empty with etcd configured. After successful start, etcd watch errors
+are logged but do not propagate — operators can fix etcd without
+restarting the service.
 
-1. **File** — `app.config.file.paths` (comma-separated) or `app.config.file.path`. YAML by default.
-2. **Static etcd** — `app.config.etcd.static.paths` + `app.config.etcd.endpoint`. Loaded once, no watching.
-3. **Dynamic etcd** — `app.config.etcd.dynamic.paths`. Subscribed via native `clientv3.Watch` on every path (not just the first) until context cancellation. Only PUT events are applied — DELETE is ignored. On watch disconnect (compaction, network drop, server restart), each watcher reconnects with exponential backoff (1s → 30s cap) and re-syncs the key via Get so updates missed during the outage are caught up.
-4. **Environment variables** — always override. `AutomaticEnv` with `"." → "_"` replacer. So `http.frontend.port` reads `HTTP_FRONTEND_PORT`.
+The dynamic watcher runs until `ctx` is cancelled, then closes the etcd
+client. Pass a long-lived `ctx` (typically the app's main context).
 
-## API
+## Container helper
 
-### Loader
+`Container[C, S]` and `NewContainer` provide a two-step bootstrap (init
+config → init services). `ServicesInit` may return a `Rollback` invoked
+**only when initialization fails** — it releases partially-constructed
+resources. Runtime teardown of healthy resources is the job of
+`lifecycle.Resource` registered with `app.App`; on success the
+`Rollback` is discarded. See `container.go` godoc for details.
 
-```go
-func NewConfig(ctx context.Context) (*Config, error)
-```
+## Migration from the typed-method API
 
-### Getters
+| Was                                 | Now                                        |
+|-------------------------------------|--------------------------------------------|
+| `cfg.GetString("k")`                | `di.Get[string](cfg, "k")`                 |
+| `cfg.GetStringOrDefault("k", "x")`  | `di.GetOrDefault[string](cfg, "k", "x")`   |
+| `cfg.GetInt("k")`                   | `di.Get[int](cfg, "k")`                    |
+| `cfg.GetBool("k")`                  | `di.Get[bool](cfg, "k")`                   |
+| `cfg.GetDuration("k")`              | `di.Get[time.Duration](cfg, "k")`          |
+| `cfg.GetStringSlice("k")`           | `di.Get[[]string](cfg, "k")`               |
+| `cfg.WatchString("k")`              | `di.Live[string](cfg, "k")`                |
+| `cfg.WatchInt("k")`                 | `di.Live[int](cfg, "k")`                   |
+| `cfg.WatchBool("k")`                | `di.Live[bool](cfg, "k")`                  |
+| `cfg.WatchDuration("k")`            | `di.Live[time.Duration](cfg, "k")`         |
+| `cfg.WatchStringSlice("k")`         | `di.Live[[]string](cfg, "k")`              |
+| `cfg.GetStorage().GetString("k")`   | `di.Get[string](cfg, "k")` (no direct storage access anymore) |
 
-```go
-func (*Config) GetString(key string) string
-func (*Config) GetStringOrDefault(key, defaultValue string) string
-func (*Config) GetStringSlice(key string) []string
-func (*Config) GetInt(key string) int
-func (*Config) GetBool(key string) bool
-func (*Config) GetDuration(key string) time.Duration
-func (*Config) GetAppEnv() string
-func (*Config) GetServiceName() string
-func (*Config) GetStorage() *viper.Viper   // escape hatch — prefer the typed getters
-```
-
-### Watchers (for dynamic etcd values)
-
-Each `Watch*` returns a closure that re-reads the key every call, so you get live-updated values without re-wiring:
-
-```go
-getConfirmLink := cfg.WatchString("frontend.confirm_email_link")
-// later: getConfirmLink() returns the current value at that moment
-```
-
-### Container
-
-```go
-type Container[C, S any] struct {
-    Config   C
-    Services S
-}
-
-// ServicesInit builds the Services graph and MAY return a cleanup closure
-// that releases any already-constructed resources if err is non-nil.
-// NewContainer invokes the cleanup before returning the init error.
-type ServicesInit[C, S any] func(
-    ctx context.Context,
-    cfg C,
-) (services S, cleanup func(context.Context) error, err error)
-
-func NewContainer[C, S any](
-    ctx context.Context,
-    initConfig func(context.Context) (C, error),
-    initServices ServicesInit[C, S],
-) (*Container[C, S], error)
-```
-
-The cleanup closure lets partial-failure startup paths release resources (open DB pools, connected redis clients, started otel providers). Return `nil` for the cleanup when the initializer has nothing to release. On success, NewContainer discards the cleanup — runtime teardown is driven by `app.App` via `lifecycle.Resource`.
-
-```go
-func NewServiceManager(ctx context.Context, cfg Config) (*Manager, func(context.Context) error, error) {
-    db, err := sql.New(ctx, cfg.DB)
-    if err != nil {
-        return nil, nil, fmt.Errorf("init db: %w", err)
-    }
-
-    cleanup := func(ctx context.Context) error { return db.Shutdown(ctx) }
-
-    redisClient, err := redis.New(ctx, cfg.Redis)
-    if err != nil {
-        return nil, cleanup, fmt.Errorf("init redis: %w", err)
-    }
-
-    cleanup = func(ctx context.Context) error {
-        return errors.Join(redisClient.Shutdown(ctx), db.Shutdown(ctx))
-    }
-
-    return &Manager{DB: db, Redis: redisClient}, nil, nil // success path: cleanup discarded
-}
-```
-
-## Why no `Bind[T]` or `mapstructure` tags?
-
-Core-package `Config` structs (e.g., `http2.Config`, `redis.Config`) are plain structs with no reflection metadata. Consumer apps define their own app-level `config.Config` that composes core configs and maps viper keys to fields explicitly:
-
-```go
-// app/internal/di/config/config.go
-type Config struct {
-    Frontend http2.Config
-    Redis    redis.Config
-}
-
-func NewConfig(ctx context.Context) (Config, error) {
-    raw, err := di.NewConfig(ctx)
-    if err != nil {
-        return Config{}, err
-    }
-    return Config{
-        Frontend: http2.Config{
-            Port:         raw.GetStringOrDefault("http.frontend.port", "8080"),
-            ReadTimeout:  raw.GetDuration("http.frontend.read_timeout"),
-            WriteTimeout: raw.GetDuration("http.frontend.write_timeout"),
-        },
-        Redis: redis.Config{
-            Host: raw.GetString("redis.host"),
-            Port: raw.GetString("redis.port"),
-        },
-    }, nil
-}
-```
-
-Rationale: core packages stay usable without viper (tests can construct `Config{}` literals directly), and the viper-key → field mapping is visible and reviewable in the app rather than hidden behind tags.
-
-## See also
-
-- [`core/app`](../app/README.md) — where Resources/Runners from the Services graph get registered.
-- [`core/lifecycle`](../lifecycle/README.md) — the cleanup contract that replaces the old `ServiceContainer.AddOnClose`.
+For consumers that embed the config (`type AppConfig struct { *di.Config; ... }`),
+use `di.Get[T](appCfg.Config, "k")` — explicit access to the embedded
+pointer.

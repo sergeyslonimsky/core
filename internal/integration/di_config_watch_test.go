@@ -42,14 +42,14 @@ func TestNewConfig_EtcdDynamic_NativeWatchIsFast(t *testing.T) {
 
 	cfg, err := di.NewConfig(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, 100, cfg.GetInt("limits.rateLimit"))
+	require.Equal(t, 100, di.Get[int](cfg, "limits.rateLimit"))
 
 	testhelpers.PutEtcdValue(t, endpoint, "test/fast-service/dynamic.yaml", map[string]any{
 		"limits": map[string]any{"rateLimit": 200},
 	})
 
 	require.Eventually(t, func() bool {
-		return cfg.GetInt("limits.rateLimit") == 200
+		return di.Get[int](cfg, "limits.rateLimit") == 200
 	}, watchPropagationTimeout, watchPropagationInterval,
 		"expected rateLimit=200 within %s (native watch should propagate within ~seconds)",
 		watchPropagationTimeout)
@@ -83,8 +83,8 @@ func TestNewConfig_EtcdDynamic_MultiplePathsAllWatched(t *testing.T) {
 
 	cfg, err := di.NewConfig(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "base-initial", cfg.GetString("base.value"))
-	require.Equal(t, "extra-initial", cfg.GetString("extra.value"))
+	require.Equal(t, "base-initial", di.Get[string](cfg, "base.value"))
+	require.Equal(t, "extra-initial", di.Get[string](cfg, "extra.value"))
 
 	// Update the SECOND path — under the old viper/remote implementation
 	// this would never propagate, because only the first provider was polled.
@@ -93,7 +93,7 @@ func TestNewConfig_EtcdDynamic_MultiplePathsAllWatched(t *testing.T) {
 	})
 
 	require.Eventually(t, func() bool {
-		return cfg.GetString("extra.value") == "extra-updated"
+		return di.Get[string](cfg, "extra.value") == "extra-updated"
 	}, watchPropagationTimeout, watchPropagationInterval,
 		"second dynamic path must be watched, not just the first")
 
@@ -103,7 +103,7 @@ func TestNewConfig_EtcdDynamic_MultiplePathsAllWatched(t *testing.T) {
 	})
 
 	require.Eventually(t, func() bool {
-		return cfg.GetString("base.value") == "base-updated"
+		return di.Get[string](cfg, "base.value") == "base-updated"
 	}, watchPropagationTimeout, watchPropagationInterval)
 }
 
@@ -130,7 +130,7 @@ func TestNewConfig_EtcdDynamic_DeleteIgnored(t *testing.T) {
 
 	cfg, err := di.NewConfig(t.Context())
 	require.NoError(t, err)
-	require.True(t, cfg.GetBool("feature.enabled"))
+	require.True(t, di.Get[bool](cfg, "feature.enabled"))
 
 	// Delete the key — the watcher sees a DELETE event but must not touch
 	// Config state.
@@ -140,7 +140,7 @@ func TestNewConfig_EtcdDynamic_DeleteIgnored(t *testing.T) {
 	// consciously ignored (not simply racing ahead of us).
 	time.Sleep(500 * time.Millisecond)
 
-	assert.True(t, cfg.GetBool("feature.enabled"),
+	assert.True(t, di.Get[bool](cfg, "feature.enabled"),
 		"DELETE must not wipe the last-known value")
 }
 
@@ -168,14 +168,14 @@ func TestNewConfig_EtcdDynamic_ReconnectAfterCompaction(t *testing.T) {
 
 	cfg, err := di.NewConfig(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, 10, cfg.GetInt("limits.rateLimit"))
+	require.Equal(t, 10, di.Get[int](cfg, "limits.rateLimit"))
 
 	// Normal update through watch — sanity check the happy path.
 	testhelpers.PutEtcdValue(t, endpoint, key, map[string]any{
 		"limits": map[string]any{"rateLimit": 20},
 	})
 	require.Eventually(t, func() bool {
-		return cfg.GetInt("limits.rateLimit") == 20
+		return di.Get[int](cfg, "limits.rateLimit") == 20
 	}, watchPropagationTimeout, watchPropagationInterval)
 
 	// Force compaction — this cancels the active watch with ErrCompacted.
@@ -191,7 +191,7 @@ func TestNewConfig_EtcdDynamic_ReconnectAfterCompaction(t *testing.T) {
 	})
 
 	require.Eventually(t, func() bool {
-		return cfg.GetInt("limits.rateLimit") == 99
+		return di.Get[int](cfg, "limits.rateLimit") == 99
 	}, reconnectPropagationTimeout, watchPropagationInterval,
 		"watcher must reconnect after compaction and reflect the post-compact PUT")
 }
