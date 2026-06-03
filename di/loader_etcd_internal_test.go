@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -95,7 +94,7 @@ func TestParseConfigBytes_UnknownType(t *testing.T) {
 
 	_, err := parseConfigBytes([]byte("k=v"), "toml")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrUnknownConfigType))
+	assert.ErrorIs(t, err, ErrUnknownConfigType)
 }
 
 func TestLoadEtcdOnce_Empty(t *testing.T) {
@@ -140,7 +139,7 @@ func TestLoadEtcdOnce_PathNotFound(t *testing.T) {
 
 	_, err := loadEtcdOnce(t.Context(), f, []string{"missing.yaml"})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdKeyNotFound))
+	require.ErrorIs(t, err, ErrEtcdKeyNotFound)
 	assert.Contains(t, err.Error(), "missing.yaml")
 }
 
@@ -174,7 +173,7 @@ func TestLoadEtcdOnce_UnknownType(t *testing.T) {
 
 	_, err := loadEtcdOnce(t.Context(), f, []string{"svc/a.toml"})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrUnknownConfigType))
+	require.ErrorIs(t, err, ErrUnknownConfigType)
 }
 
 func TestLoadEtcdPerPath_ReturnsPerPathMaps(t *testing.T) {
@@ -198,7 +197,7 @@ func TestLoadEtcdPerPath_PathError(t *testing.T) {
 
 	_, err := loadEtcdPerPath(t.Context(), f, []string{"svc/a.yaml", "missing.yaml"})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdKeyNotFound))
+	require.ErrorIs(t, err, ErrEtcdKeyNotFound)
 }
 
 // ----- dynamicWatcher.run -----
@@ -215,6 +214,8 @@ func snapshotChan() (func(map[string]any), <-chan map[string]any) {
 
 // fastBackoff is the backoff configuration used by all watcher tests so
 // reconnect timing doesn't add real seconds to the suite.
+//
+//nolint:gochecknoglobals // read-only config for tests
 var fastBackoff = backoffConfig{
 	initial: 1 * time.Millisecond,
 	max:     10 * time.Millisecond,
@@ -253,6 +254,7 @@ func TestDynamicWatcher_PutTriggersSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -288,6 +290,7 @@ func TestDynamicWatcher_MultiplePathsIndependent(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -297,11 +300,13 @@ func TestDynamicWatcher_MultiplePathsIndependent(t *testing.T) {
 	require.True(t, f.WaitForWatcher("p1.yaml", 1, 2*time.Second))
 
 	f.Set("p0.yaml", []byte("x: p0-new\n"))
+
 	snap1 := recvSnapshot(t, snaps)
 	assert.Equal(t, "p0-new", snap1["x"])
 	assert.Equal(t, "p1-init", snap1["y"])
 
 	f.Set("p1.yaml", []byte("y: p1-new\n"))
+
 	snap2 := recvSnapshot(t, snaps)
 	assert.Equal(t, "p0-new", snap2["x"])
 	assert.Equal(t, "p1-new", snap2["y"])
@@ -326,6 +331,7 @@ func TestDynamicWatcher_StaleKeyFix(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -362,6 +368,7 @@ func TestDynamicWatcher_DeleteIgnored(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -395,6 +402,7 @@ func TestDynamicWatcher_TerminalErrorReconnectsAndResyncs(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -442,6 +450,7 @@ func TestDynamicWatcher_CtxCancelStopsAndClosesKV(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -470,6 +479,7 @@ func TestDynamicWatcher_RaceLoad(t *testing.T) {
 
 	publish := func(snap map[string]any) {
 		mu.Lock()
+
 		received = append(received, snap)
 		mu.Unlock()
 	}
@@ -482,6 +492,7 @@ func TestDynamicWatcher_RaceLoad(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -558,6 +569,7 @@ func TestDynamicWatcher_InvalidYAMLOnPutDoesNotCrash(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -587,7 +599,7 @@ func TestDynamicWatcher_InvalidYAMLOnPutDoesNotCrash(t *testing.T) {
 func TestDynamicWatcher_AdvanceBackoff(t *testing.T) {
 	t.Parallel()
 
-	w := &dynamicWatcher{ //nolint:exhaustruct // testing helper directly
+	w := &dynamicWatcher{
 		backoff: backoffConfig{initial: 1 * time.Millisecond, max: 8 * time.Millisecond, factor: 2},
 	}
 
@@ -620,6 +632,7 @@ func TestDynamicWatcher_ResyncErrorBacksOffAndRetries(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
+
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -637,6 +650,7 @@ func TestDynamicWatcher_ResyncErrorBacksOffAndRetries(t *testing.T) {
 	f.Set("p0.yaml", []byte("k: ok\n"))
 
 	deadline := time.After(2 * time.Second)
+
 	for {
 		select {
 		case snap := <-snaps:
@@ -680,5 +694,5 @@ func TestParseConfigBytes_UnknownTypeContainsString(t *testing.T) {
 
 	_, err := parseConfigBytes(nil, "ini")
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "ini"))
+	assert.Contains(t, err.Error(), "ini")
 }

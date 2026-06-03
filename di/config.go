@@ -76,6 +76,29 @@ type Config struct {
 	appEnv      string
 }
 
+// NewConfig is the production constructor. It loads the configuration
+// from yaml files, etcd static, and etcd dynamic in priority order,
+// publishes the initial snapshot, and starts the dynamic-update
+// watcher in a background goroutine bound to ctx.
+//
+// Behaviour:
+//   - app.env defaults to AppEnvDev when not set in env.
+//   - app.service.name is required if any etcd paths are configured.
+//   - app.config.etcd.endpoint is required if any etcd paths are
+//     configured.
+//   - The static-load etcd client is opened and closed within the
+//     load; the dynamic watcher owns its own client and closes it on
+//     ctx cancellation.
+func NewConfig(ctx context.Context) (*Config, error) {
+	return newConfigWithDeps(ctx, configDeps{
+		envLookup: os.LookupEnv,
+		openFile:  osOpenFile,
+		etcdFactory: func(endpoint string, requestTimeout time.Duration) (etcdKV, error) {
+			return newRealEtcdKV(endpoint, requestTimeout)
+		},
+	})
+}
+
 // GetAppEnv returns the application environment captured at NewConfig
 // time. The value is immutable for the process lifetime — it builds
 // etcd paths and must not change mid-flight even if app.env appears in
@@ -205,31 +228,10 @@ type configDeps struct {
 	etcdFactory func(endpoint string, requestTimeout time.Duration) (etcdKV, error)
 }
 
-// NewConfig is the production constructor. It loads the configuration
-// from yaml files, etcd static, and etcd dynamic in priority order,
-// publishes the initial snapshot, and starts the dynamic-update
-// watcher in a background goroutine bound to ctx.
-//
-// Behaviour:
-//   - app.env defaults to AppEnvDev when not set in env.
-//   - app.service.name is required if any etcd paths are configured.
-//   - app.config.etcd.endpoint is required if any etcd paths are
-//     configured.
-//   - The static-load etcd client is opened and closed within the
-//     load; the dynamic watcher owns its own client and closes it on
-//     ctx cancellation.
-func NewConfig(ctx context.Context) (*Config, error) {
-	return newConfigWithDeps(ctx, configDeps{
-		envLookup: os.LookupEnv,
-		openFile:  osOpenFile,
-		etcdFactory: func(endpoint string, requestTimeout time.Duration) (etcdKV, error) {
-			return newRealEtcdKV(endpoint, requestTimeout)
-		},
-	})
-}
-
 // newConfigWithDeps is the testable constructor. The production
 // NewConfig wraps it with default deps.
+//
+//nolint:funlen // linear bootstrap sequence, clearer in one function
 func newConfigWithDeps(ctx context.Context, deps configDeps) (*Config, error) {
 	// 1. Bootstrap fields are read directly from env, never from file
 	// or etcd. They are immutable for the process lifetime and feed
@@ -317,6 +319,8 @@ func newConfigWithDeps(ctx context.Context, deps configDeps) (*Config, error) {
 
 // envOrDefault reads dottedKey from env (after dot→underscore upcase)
 // and returns the value, or def when unset / empty.
+//
+//nolint:unparam // reusable helper designed for multiple potential keys
 func envOrDefault(envLookup func(string) (string, bool), dottedKey, def string) string {
 	if v, ok := lookupConfigEnv(envLookup, dottedKey); ok && v != "" {
 		return v
@@ -350,16 +354,21 @@ func loadFileConfigs(deps configDeps) (map[string]any, error) {
 		return loadFiles(deps.openFile, []string{single})
 	}
 
-	return nil, nil
+	return map[string]any{}, nil
 }
 
 // loadStaticEtcd reads app.config.etcd.static.paths (CSV) and merges
 // every referenced etcd key. Opens a transient etcd client, closes it
 // before returning. Returns (nil, nil) when no static paths are set.
-func loadStaticEtcd(ctx context.Context, deps configDeps, appEnv, serviceName string, requestTimeout time.Duration) (map[string]any, error) {
+func loadStaticEtcd(
+	ctx context.Context,
+	deps configDeps,
+	appEnv, serviceName string,
+	requestTimeout time.Duration,
+) (map[string]any, error) {
 	raw, has := lookupConfigEnv(deps.envLookup, "app.config.etcd.static.paths")
 	if !has || raw == "" {
-		return nil, nil
+		return map[string]any{}, nil
 	}
 
 	paths := parseCommaSeparatedPaths(raw)

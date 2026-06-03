@@ -23,9 +23,11 @@ var ErrUnknownConfigType = errors.New("unknown config type")
 // ("yaml"/"yml"/"json") and returns a flat dotted-key map (via the same
 // flatten used by the file loader). Empty payload yields an empty map.
 // Unknown configType wraps ErrUnknownConfigType with the offending string.
+//
+//nolint:cyclop // standard type parser, cleaner as a flat switch
 func parseConfigBytes(data []byte, configType string) (map[string]any, error) {
 	switch configType {
-	case "yaml", "yml":
+	case configTypeYAML, "yml":
 		if len(data) == 0 {
 			return map[string]any{}, nil
 		}
@@ -179,6 +181,7 @@ func newDynamicWatcher(
 		state:   initial,
 		publish: publish,
 		backoff: defaultBackoffConfig(),
+		mu:      sync.Mutex{},
 	}
 }
 

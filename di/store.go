@@ -22,15 +22,19 @@ func newStore(envLookup func(string) (string, bool), defaults map[string]any) *s
 	if envLookup == nil {
 		envLookup = func(string) (string, bool) { return "", false }
 	}
+
 	if defaults == nil {
 		defaults = map[string]any{}
 	}
+
 	s := &store{
+		snapshot:  atomic.Pointer[map[string]any]{},
 		envLookup: envLookup,
 		defaults:  defaults,
 	}
 	empty := map[string]any{}
 	s.snapshot.Store(&empty)
+
 	return s
 }
 
@@ -40,6 +44,7 @@ func (s *store) setSnapshot(m map[string]any) {
 	if m == nil {
 		m = map[string]any{}
 	}
+
 	s.snapshot.Store(&m)
 }
 
@@ -51,15 +56,18 @@ func (s *store) lookup(key string) (any, bool) {
 	if v, ok := s.envLookup(envKey(key)); ok {
 		return v, true
 	}
+
 	snap := s.snapshot.Load()
 	if snap != nil {
 		if v, ok := (*snap)[key]; ok {
 			return v, true
 		}
 	}
+
 	if v, ok := s.defaults[key]; ok {
 		return v, true
 	}
+
 	return nil, false
 }
 
@@ -76,6 +84,7 @@ func envKey(key string) string {
 func flatten(nested map[string]any) map[string]any {
 	out := map[string]any{}
 	flattenInto(out, "", nested)
+
 	return out
 }
 
@@ -85,11 +94,13 @@ func flattenInto(out map[string]any, prefix string, m map[string]any) {
 		if prefix != "" {
 			key = prefix + "." + k
 		}
+
 		switch child := v.(type) {
 		case map[string]any:
 			if len(child) == 0 {
 				continue
 			}
+
 			flattenInto(out, key, child)
 		default:
 			out[key] = v
@@ -110,10 +121,12 @@ func merge(dst, src map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+
 	for k, v := range src {
 		existing, hasExisting := out[k]
 		dstMap, dstIsMap := existing.(map[string]any)
 		srcMap, srcIsMap := v.(map[string]any)
+
 		switch {
 		case hasExisting && dstIsMap && srcIsMap:
 			out[k] = merge(dstMap, srcMap)
@@ -123,6 +136,7 @@ func merge(dst, src map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+
 	return out
 }
 
@@ -135,5 +149,6 @@ func cloneMap(m map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+
 	return out
 }

@@ -33,6 +33,7 @@ func TestToString(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toString(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toString(%v) = (%q,%v), want (%q,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -70,6 +71,7 @@ func TestToInt(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toInt(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toInt(%v) = (%d,%v), want (%d,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -105,6 +107,7 @@ func TestToInt64(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toInt64(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toInt64(%v) = (%d,%v), want (%d,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -151,6 +154,7 @@ func TestToBool(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toBool(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toBool(%v) = (%v,%v), want (%v,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -186,6 +190,7 @@ func TestToFloat64(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toFloat64(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toFloat64(%v) = (%v,%v), want (%v,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -223,6 +228,7 @@ func TestToDuration(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toDuration(tc.in)
 			if got != tc.want || ok != tc.wantOk {
 				t.Fatalf("toDuration(%v) = (%v,%v), want (%v,%v)", tc.in, got, ok, tc.want, tc.wantOk)
@@ -254,10 +260,12 @@ func TestToStringSlice(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, ok := toStringSlice(tc.in)
 			if ok != tc.wantOk {
 				t.Fatalf("toStringSlice(%v) ok=%v want %v", tc.in, ok, tc.wantOk)
 			}
+
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("toStringSlice(%v) = %#v, want %#v", tc.in, got, tc.want)
 			}
@@ -269,11 +277,14 @@ func TestToStringSlice_DoesNotShareBacking(t *testing.T) {
 	t.Parallel()
 
 	in := []string{"a", "b"}
+
 	got, ok := toStringSlice(in)
 	if !ok {
 		t.Fatal("expected ok")
 	}
+
 	got[0] = "X"
+
 	if in[0] != "a" {
 		t.Fatalf("toStringSlice shared backing array: %v", in)
 	}
@@ -286,7 +297,7 @@ func FuzzToInt(f *testing.F) {
 	f.Add("")
 	f.Add("abc")
 	f.Add("-99999999999999999999")
-	f.Fuzz(func(t *testing.T, s string) {
+	f.Fuzz(func(_ *testing.T, s string) {
 		_, _ = toInt(s)
 	})
 }
@@ -296,7 +307,7 @@ func FuzzToBool(f *testing.F) {
 	f.Add("yes")
 	f.Add("0")
 	f.Add("garbage")
-	f.Fuzz(func(t *testing.T, s string) {
+	f.Fuzz(func(_ *testing.T, s string) {
 		_, _ = toBool(s)
 	})
 }
@@ -307,7 +318,7 @@ func FuzzToDuration(f *testing.F) {
 	f.Add("")
 	f.Add("abc")
 	f.Add("1h2m3s")
-	f.Fuzz(func(t *testing.T, s string) {
+	f.Fuzz(func(_ *testing.T, s string) {
 		_, _ = toDuration(s)
 	})
 }

@@ -127,7 +127,7 @@ func (r *realEtcdKV) Watch(ctx context.Context, key string) <-chan watchEvent {
 		for resp := range ch {
 			if err := resp.Err(); err != nil {
 				select {
-				case out <- watchEvent{Err: fmt.Errorf("etcd watch response: %w", err)}:
+				case out <- watchEvent{Type: eventPut, Value: nil, Err: fmt.Errorf("etcd watch response: %w", err)}:
 				case <-ctx.Done():
 				}
 
@@ -171,10 +171,11 @@ func (r *realEtcdKV) Close() error {
 func translateEvent(ev *clientv3.Event) watchEvent {
 	switch ev.Type {
 	case clientv3.EventTypeDelete:
-		return watchEvent{Type: eventDelete}
+		return watchEvent{Type: eventDelete, Value: nil, Err: nil}
+	case clientv3.EventTypePut:
+		return watchEvent{Type: eventPut, Value: ev.Kv.Value, Err: nil}
 	default:
-		// clientv3.EventTypePut and any future additions land here as PUT.
-		return watchEvent{Type: eventPut, Value: ev.Kv.Value}
+		return watchEvent{Type: eventPut, Value: ev.Kv.Value, Err: nil}
 	}
 }
 

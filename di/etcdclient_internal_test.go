@@ -37,7 +37,7 @@ type fakeWatcher struct {
 var _ etcdKV = (*fakeEtcdKV)(nil)
 
 func newFakeEtcdKV() *fakeEtcdKV {
-	return &fakeEtcdKV{ //nolint:exhaustruct // zero atomic.Int32 is intentional
+	return &fakeEtcdKV{
 		data:     make(map[string][]byte),
 		watchers: make(map[string][]*fakeWatcher),
 	}
@@ -238,7 +238,7 @@ func finishWatcher(w *fakeWatcher) {
 	// caller may also reach this point; the close-once guard below makes
 	// the operation idempotent.
 	defer func() {
-		_ = recover() //nolint:errcheck // double-close on done is not possible (single goroutine path)
+		_ = recover()
 	}()
 
 	close(w.done)
@@ -269,7 +269,7 @@ func TestFakeEtcdKV_GetSetDeleteRoundTrip(t *testing.T) {
 
 	_, err := f.Get(t.Context(), "k")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdKeyNotFound))
+	require.ErrorIs(t, err, ErrEtcdKeyNotFound)
 
 	f.Set("k", []byte("v"))
 
@@ -281,7 +281,7 @@ func TestFakeEtcdKV_GetSetDeleteRoundTrip(t *testing.T) {
 
 	_, err = f.Get(t.Context(), "k")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdKeyNotFound))
+	require.ErrorIs(t, err, ErrEtcdKeyNotFound)
 }
 
 func TestFakeEtcdKV_SetErrorEmitsErrorAndCloses(t *testing.T) {
@@ -294,7 +294,7 @@ func TestFakeEtcdKV_SetErrorEmitsErrorAndCloses(t *testing.T) {
 
 	ev := mustReceive(t, ch)
 	require.Error(t, ev.Err)
-	assert.True(t, errors.Is(ev.Err, errBoom))
+	require.ErrorIs(t, ev.Err, errBoom)
 
 	_, ok := receiveWithTimeout(t, ch, time.Second)
 	assert.False(t, ok, "channel must be closed after terminal error")

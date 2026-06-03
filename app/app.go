@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -293,8 +294,8 @@ func (a *App) Logger() *slog.Logger {
 func (a *App) shutdown(ctx context.Context) error {
 	var errs []error
 
-	for i := len(a.runners) - 1; i >= 0; i-- {
-		r := a.runners[i]
+	for _, v := range slices.Backward(a.runners) {
+		r := v
 		if err := r.Shutdown(ctx); err != nil {
 			a.logger.Error("runner shutdown failed",
 				slog.String("component", fmt.Sprintf("%T", r)),
@@ -304,8 +305,8 @@ func (a *App) shutdown(ctx context.Context) error {
 		}
 	}
 
-	for i := len(a.resources) - 1; i >= 0; i-- {
-		r := a.resources[i]
+	for _, v := range slices.Backward(a.resources) {
+		r := v
 		if err := r.Shutdown(ctx); err != nil {
 			a.logger.Error("resource shutdown failed",
 				slog.String("component", fmt.Sprintf("%T", r)),

@@ -19,6 +19,8 @@ const (
 	// backoffGrowthFactor multiplies the current backoff after a failed
 	// resync attempt.
 	backoffGrowthFactor = 2
+	// configTypeYAML represents the YAML configuration format.
+	configTypeYAML = "yaml"
 )
 
 // parseCommaSeparatedPaths splits a comma-separated string into a slice
@@ -55,7 +57,7 @@ func buildEtcdPath(appEnv, serviceName, configPath string) string {
 func getConfigTypeFromPath(path string) string {
 	ext := filepath.Ext(path)
 	if ext == "" {
-		return "yaml"
+		return configTypeYAML
 	}
 
 	return strings.TrimPrefix(ext, ".")

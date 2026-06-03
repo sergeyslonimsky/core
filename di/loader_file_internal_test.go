@@ -22,10 +22,12 @@ func stringOpener(contents map[string]string, calls *[]string) openFileFn {
 		if calls != nil {
 			*calls = append(*calls, path)
 		}
+
 		body, ok := contents[path]
 		if !ok {
 			return nil, fmt.Errorf("not found: %s", path)
 		}
+
 		return io.NopCloser(strings.NewReader(body)), nil
 	}
 }
@@ -34,6 +36,7 @@ func stringOpener(contents map[string]string, calls *[]string) openFileFn {
 
 func TestLoadFiles_SingleValidFile(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"a.yaml": "foo: 1\nbar:\n  baz: hello\n",
 	}, nil)
@@ -47,6 +50,7 @@ func TestLoadFiles_SingleValidFile(t *testing.T) {
 
 func TestLoadFiles_TwoFilesSecondOverridesKey(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"first.yaml":  "shared: from-first\nonlyA: 1\n",
 		"second.yaml": "shared: from-second\nonlyB: 2\n",
@@ -62,6 +66,7 @@ func TestLoadFiles_TwoFilesSecondOverridesKey(t *testing.T) {
 
 func TestLoadFiles_ThreeFilesDisjointKeys(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"a.yaml": "a: 1\n",
 		"b.yaml": "b: 2\n",
@@ -74,6 +79,7 @@ func TestLoadFiles_ThreeFilesDisjointKeys(t *testing.T) {
 
 func TestLoadFiles_OpenErrorIsWrappedWithPath(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{}, nil)
 	_, err := loadFiles(open, []string{"missing.yaml"})
 	require.Error(t, err)
@@ -83,6 +89,7 @@ func TestLoadFiles_OpenErrorIsWrappedWithPath(t *testing.T) {
 
 func TestLoadFiles_InvalidYAMLIsWrappedWithPath(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"bad.yaml": "this: : : not yaml\n  - bad\n",
 	}, nil)
@@ -94,6 +101,7 @@ func TestLoadFiles_InvalidYAMLIsWrappedWithPath(t *testing.T) {
 
 func TestLoadFiles_DirectoryPathAppendsConfigYaml(t *testing.T) {
 	t.Parallel()
+
 	want := filepath.Clean(filepath.Join("etc/conf.d", "config.yaml"))
 	open := stringOpener(map[string]string{
 		want: "k: v\n",
@@ -105,7 +113,9 @@ func TestLoadFiles_DirectoryPathAppendsConfigYaml(t *testing.T) {
 
 func TestLoadFiles_UppercaseYAMLExtensionRecognised(t *testing.T) {
 	t.Parallel()
+
 	var calls []string
+
 	open := stringOpener(map[string]string{
 		"app.YAML": "k: v\n",
 	}, &calls)
@@ -117,7 +127,9 @@ func TestLoadFiles_UppercaseYAMLExtensionRecognised(t *testing.T) {
 
 func TestLoadFiles_YmlExtensionRecognised(t *testing.T) {
 	t.Parallel()
+
 	var calls []string
+
 	open := stringOpener(map[string]string{
 		"app.yml": "k: v\n",
 	}, &calls)
@@ -128,6 +140,7 @@ func TestLoadFiles_YmlExtensionRecognised(t *testing.T) {
 
 func TestLoadFiles_FilepathCleanIsApplied(t *testing.T) {
 	t.Parallel()
+
 	var calls []string
 	// "./a/../b//c.yaml" cleans to "b/c.yaml".
 	open := stringOpener(map[string]string{
@@ -141,6 +154,7 @@ func TestLoadFiles_FilepathCleanIsApplied(t *testing.T) {
 
 func TestLoadFiles_EmptyPathsReturnsEmptyMap(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{}, nil)
 	got, err := loadFiles(open, nil)
 	require.NoError(t, err)
@@ -153,6 +167,7 @@ func TestLoadFiles_EmptyPathsReturnsEmptyMap(t *testing.T) {
 
 func TestLoadFiles_EmptyFileContentYieldsEmptyMap(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"empty.yaml":   "",
 		"nullish.yaml": "~\n",
@@ -164,6 +179,7 @@ func TestLoadFiles_EmptyFileContentYieldsEmptyMap(t *testing.T) {
 
 func TestLoadFiles_MergeNestedMaps(t *testing.T) {
 	t.Parallel()
+
 	open := stringOpener(map[string]string{
 		"a.yaml": "db:\n  host: a\n  port: 1\n",
 		"b.yaml": "db:\n  host: b\n",
@@ -222,6 +238,7 @@ func TestOsOpenFile_SymlinkToRegularFile(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "real.yaml")
 	require.NoError(t, os.WriteFile(target, []byte("k: v\n"), 0o644))
+
 	link := filepath.Join(dir, "link.yaml")
 	require.NoError(t, os.Symlink(target, link))
 
@@ -233,11 +250,13 @@ func TestOsOpenFile_SymlinkToRegularFile(t *testing.T) {
 func TestOsOpenFile_FifoNotRegular(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
+
 	p := filepath.Join(dir, "fifo.yaml")
 	if err := syscall.Mkfifo(p, 0o644); err != nil {
 		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, syscall.EOPNOTSUPP) {
 			t.Skip("requires mkfifo")
 		}
+
 		t.Fatalf("mkfifo: %v", err)
 	}
 
@@ -249,7 +268,9 @@ func TestOsOpenFile_FifoNotRegular(t *testing.T) {
 		rc  io.ReadCloser
 		err error
 	}
+
 	done := make(chan result, 1)
+
 	go func() {
 		rc, err := osOpenFile(p)
 		done <- result{rc, err}
@@ -258,12 +279,14 @@ func TestOsOpenFile_FifoNotRegular(t *testing.T) {
 	// Open writer side so the reader open() can return.
 	w, err := os.OpenFile(p, os.O_WRONLY, 0)
 	require.NoError(t, err)
+
 	defer w.Close()
 
 	res := <-done
 	if res.rc != nil {
 		_ = res.rc.Close()
 	}
+
 	require.Error(t, res.err)
 	require.ErrorIs(t, res.err, ErrNotRegularFile)
 	require.Contains(t, res.err.Error(), p)
@@ -277,6 +300,7 @@ func TestOsOpenFile_DirectoryIsNotRegular(t *testing.T) {
 	if rc != nil {
 		_ = rc.Close()
 	}
+
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrNotRegularFile)
 	require.Contains(t, err.Error(), dir)

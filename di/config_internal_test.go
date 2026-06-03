@@ -175,7 +175,7 @@ func TestResolveEtcdRequestTimeout(t *testing.T) {
 			"APP_CONFIG_ETCD_REQUEST_TIMEOUT": "five seconds",
 		}))
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, ErrInvalidEtcdRequestTimeout))
+		assert.ErrorIs(t, err, ErrInvalidEtcdRequestTimeout)
 	})
 
 	t.Run("non-positive → ErrInvalidEtcdRequestTimeout", func(t *testing.T) {
@@ -185,7 +185,7 @@ func TestResolveEtcdRequestTimeout(t *testing.T) {
 			"APP_CONFIG_ETCD_REQUEST_TIMEOUT": "0s",
 		}))
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, ErrInvalidEtcdRequestTimeout))
+		assert.ErrorIs(t, err, ErrInvalidEtcdRequestTimeout)
 	})
 }
 
@@ -357,14 +357,16 @@ func TestNewConfig_DefaultsOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, AppEnvDev, cfg.GetAppEnv())
-	assert.Equal(t, "", cfg.GetServiceName())
+	assert.Empty(t, cfg.GetServiceName())
 	assert.Equal(t, AppEnvDev, Get[string](cfg, "app.env"))
 }
 
 func TestNewConfig_FileLoad(t *testing.T) {
 	t.Parallel()
 
-	yaml := []byte("server:\n  host: example.com\n  port: 8080\nfeature:\n  enabled: true\ntimeout: 5s\nratios:\n  - 0.5\n  - 0.75\n")
+	yaml := []byte(
+		"server:\n  host: example.com\n  port: 8080\nfeature:\n  enabled: true\ntimeout: 5s\nratios:\n  - 0.5\n  - 0.75\n",
+	)
 
 	cfg, err := newConfigWithDeps(t.Context(), configDeps{
 		envLookup: envFn(map[string]string{
@@ -614,7 +616,7 @@ func TestGet_CoerceFailureReturnsZero(t *testing.T) {
 
 	assert.Equal(t, 0, Get[int](cfg, "bad"))
 	assert.Equal(t, int64(0), Get[int64](cfg, "bad"))
-	assert.Equal(t, 0.0, Get[float64](cfg, "bad"))
+	assert.InDelta(t, 0.0, Get[float64](cfg, "bad"), 0.0001)
 	assert.Equal(t, time.Duration(0), Get[time.Duration](cfg, "bad"))
 
 	// GetOrDefault returns def on coerce failure.
@@ -725,6 +727,7 @@ func TestLiveOrDefault(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.NoError(t, err)
+
 	bad := LiveOrDefault[int](cfg2, "bad", 7)
 	assert.Equal(t, 7, bad())
 }
@@ -744,7 +747,7 @@ func TestNewConfig_ErrEmptyConfigPaths(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEmptyConfigPaths))
+	assert.ErrorIs(t, err, ErrEmptyConfigPaths)
 }
 
 func TestNewConfig_ErrEtcdEndpointRequired_Static(t *testing.T) {
@@ -759,7 +762,7 @@ func TestNewConfig_ErrEtcdEndpointRequired_Static(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdEndpointRequired))
+	assert.ErrorIs(t, err, ErrEtcdEndpointRequired)
 }
 
 func TestNewConfig_ErrEtcdEndpointRequired_Dynamic(t *testing.T) {
@@ -774,7 +777,7 @@ func TestNewConfig_ErrEtcdEndpointRequired_Dynamic(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEtcdEndpointRequired))
+	assert.ErrorIs(t, err, ErrEtcdEndpointRequired)
 }
 
 func TestNewConfig_ErrEmptyEtcdStaticPaths(t *testing.T) {
@@ -788,7 +791,7 @@ func TestNewConfig_ErrEmptyEtcdStaticPaths(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEmptyEtcdStaticPaths))
+	assert.ErrorIs(t, err, ErrEmptyEtcdStaticPaths)
 }
 
 func TestNewConfig_ErrEmptyEtcdDynamicPaths(t *testing.T) {
@@ -802,7 +805,7 @@ func TestNewConfig_ErrEmptyEtcdDynamicPaths(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrEmptyEtcdDynamicPaths))
+	assert.ErrorIs(t, err, ErrEmptyEtcdDynamicPaths)
 }
 
 func TestNewConfig_ErrServiceNameRequired_Static(t *testing.T) {
@@ -817,7 +820,7 @@ func TestNewConfig_ErrServiceNameRequired_Static(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrServiceNameRequired))
+	assert.ErrorIs(t, err, ErrServiceNameRequired)
 }
 
 func TestNewConfig_ErrServiceNameRequired_Dynamic(t *testing.T) {
@@ -832,7 +835,7 @@ func TestNewConfig_ErrServiceNameRequired_Dynamic(t *testing.T) {
 		etcdFactory: noFactory(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrServiceNameRequired))
+	assert.ErrorIs(t, err, ErrServiceNameRequired)
 }
 
 func TestNewConfig_FileLoadError(t *testing.T) {
@@ -904,7 +907,7 @@ func TestNewConfig_EtcdFactoryError_Dynamic(t *testing.T) {
 		etcdFactory: func(string, time.Duration) (etcdKV, error) { return nil, boom },
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, boom))
+	assert.ErrorIs(t, err, boom)
 }
 
 func TestNewConfig_EtcdFactoryError_Static(t *testing.T) {
@@ -922,7 +925,7 @@ func TestNewConfig_EtcdFactoryError_Static(t *testing.T) {
 		etcdFactory: func(string, time.Duration) (etcdKV, error) { return nil, boom },
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, boom))
+	assert.ErrorIs(t, err, boom)
 }
 
 // ----------------------------------------------------------------------
@@ -1107,7 +1110,7 @@ func TestLive_StaleKeyDropped(t *testing.T) {
 // TestNewConfig_Smoke covers the production NewConfig wrapper. It cannot
 // run in parallel because it uses t.Setenv to neutralize APP_CONFIG_*
 // vars potentially inherited from the test process env.
-func TestNewConfig_Smoke(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_Smoke(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE_PATHS", "")
 	t.Setenv("APP_CONFIG_FILE_PATH", "")
 	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "")
@@ -1135,7 +1138,7 @@ func TestEnvKey_EdgeCases(t *testing.T) {
 	// Hyphens are not transformed (documented behaviour).
 	assert.Equal(t, "MY-KEY_FOO", envKey("my-key.foo"))
 	// Empty key.
-	assert.Equal(t, "", envKey(""))
+	assert.Empty(t, envKey(""))
 	// Multiple consecutive dots produce empty segments.
 	assert.Equal(t, "A__B", envKey("a..b"))
 	// Sanity check: matches strings.ReplaceAll semantics.

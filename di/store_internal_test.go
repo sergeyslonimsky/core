@@ -74,6 +74,7 @@ func TestFlatten(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := flatten(tc.in)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("flatten() = %#v, want %#v", got, tc.want)
@@ -150,9 +151,11 @@ func TestMerge(t *testing.T) {
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("merge() = %#v, want %#v", got, tc.want)
 			}
+
 			if !reflect.DeepEqual(tc.dst, dstCopy) {
 				t.Fatalf("merge() mutated dst: %#v vs %#v", tc.dst, dstCopy)
 			}
+
 			if !reflect.DeepEqual(tc.src, srcCopy) {
 				t.Fatalf("merge() mutated src: %#v vs %#v", tc.src, srcCopy)
 			}
@@ -167,9 +170,20 @@ func TestMerge_independenceFromInputs(t *testing.T) {
 	src := map[string]any{"a": map[string]any{"y": 2}}
 
 	got := merge(dst, src)
-	// Mutate result; ensure inputs unaffected.
-	got["a"].(map[string]any)["x"] = 999
-	if dst["a"].(map[string]any)["x"] != 1 {
+
+	gotA, ok1 := got["a"].(map[string]any)
+	if !ok1 {
+		t.Fatalf("expected map[string]any for got[a]")
+	}
+
+	gotA["x"] = 999
+
+	dstA, ok2 := dst["a"].(map[string]any)
+	if !ok2 {
+		t.Fatalf("expected map[string]any for dst[a]")
+	}
+
+	if dstA["x"] != 1 {
 		t.Fatalf("merge result shared state with dst")
 	}
 }
@@ -239,16 +253,20 @@ func TestStore_Lookup(t *testing.T) {
 			env := tc.env
 			lookup := func(k string) (string, bool) {
 				v, ok := env[k]
+
 				return v, ok
 			}
+
 			s := newStore(lookup, tc.defaults)
 			if tc.snapshot != nil {
 				s.setSnapshot(tc.snapshot)
 			}
+
 			got, ok := s.lookup(tc.key)
 			if ok != tc.wantFound {
 				t.Fatalf("lookup found=%v want %v", ok, tc.wantFound)
 			}
+
 			if !reflect.DeepEqual(got, tc.wantVal) {
 				t.Fatalf("lookup val=%#v want %#v", got, tc.wantVal)
 			}
@@ -263,7 +281,9 @@ func TestStore_NilEnvLookupAndDefaults(t *testing.T) {
 	if v, ok := s.lookup("missing"); ok || v != nil {
 		t.Fatalf("expected (nil,false), got (%v,%v)", v, ok)
 	}
+
 	s.setSnapshot(nil) // should not panic; replaces with empty map
+
 	if v, ok := s.lookup("missing"); ok || v != nil {
 		t.Fatalf("expected (nil,false), got (%v,%v)", v, ok)
 	}
@@ -274,10 +294,13 @@ func TestStore_SetSnapshotAtomicLoad(t *testing.T) {
 
 	s := newStore(nil, nil)
 	s.setSnapshot(map[string]any{"a": 1})
+
 	if v, ok := s.lookup("a"); !ok || v != 1 {
 		t.Fatalf("expected 1, got %v", v)
 	}
+
 	s.setSnapshot(map[string]any{"a": 2})
+
 	if v, ok := s.lookup("a"); !ok || v != 2 {
 		t.Fatalf("expected 2, got %v", v)
 	}
@@ -289,28 +312,26 @@ func TestStore_ConcurrentReadWrite(t *testing.T) {
 	s := newStore(nil, nil)
 	s.setSnapshot(map[string]any{"k": 0})
 
-	var stop atomic.Bool
-	var readersWG sync.WaitGroup
-	var writerWG sync.WaitGroup
+	var (
+		stop      atomic.Bool
+		readersWG sync.WaitGroup
+		writerWG  sync.WaitGroup
+	)
 
 	// Writer keeps replacing the snapshot until readers complete.
-	writerWG.Add(1)
-	go func() {
-		defer writerWG.Done()
+	writerWG.Go(func() {
 		for i := 0; !stop.Load(); i++ {
 			s.setSnapshot(map[string]any{"k": i})
 		}
-	}()
+	})
 
 	// 100 readers, each performing many lookups.
-	for i := 0; i < 100; i++ {
-		readersWG.Add(1)
-		go func() {
-			defer readersWG.Done()
-			for j := 0; j < 1000; j++ {
+	for range 100 {
+		readersWG.Go(func() {
+			for range 1000 {
 				_, _ = s.lookup("k")
 			}
-		}()
+		})
 	}
 
 	readersWG.Wait()
@@ -320,9 +341,11 @@ func TestStore_ConcurrentReadWrite(t *testing.T) {
 
 func TestEnvKey(t *testing.T) {
 	t.Parallel()
+
 	if got := envKey("a.b.c"); got != "A_B_C" {
 		t.Fatalf("envKey = %q", got)
 	}
+
 	if got := envKey(""); got != "" {
 		t.Fatalf("envKey empty = %q", got)
 	}

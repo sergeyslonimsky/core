@@ -35,14 +35,18 @@ type openFileFn func(path string) (io.ReadCloser, error)
 // path is normalised via filepath.Clean before being passed to open.
 func loadFiles(open openFileFn, paths []string) (map[string]any, error) {
 	acc := map[string]any{}
+
 	for _, p := range paths {
 		resolved := filepath.Clean(resolvePath(p))
+
 		flat, err := readOneFile(open, resolved)
 		if err != nil {
 			return nil, err
 		}
+
 		acc = merge(acc, flat)
 	}
+
 	return acc, nil
 }
 
@@ -51,6 +55,7 @@ func resolvePath(path string) string {
 	if strings.HasSuffix(lower, ".yaml") || strings.HasSuffix(lower, ".yml") {
 		return path
 	}
+
 	return filepath.Join(path, "config.yaml")
 }
 
@@ -62,17 +67,21 @@ func readOneFile(open openFileFn, path string) (map[string]any, error) {
 	defer func() { _ = rc.Close() }()
 
 	var parsed map[string]any
+
 	dec := yaml.NewDecoder(rc)
 	if err := dec.Decode(&parsed); err != nil {
 		if errors.Is(err, io.EOF) {
 			// empty file → no keys, no error.
 			return map[string]any{}, nil
 		}
+
 		return nil, fmt.Errorf("read config from %s: %w", path, err)
 	}
+
 	if parsed == nil {
 		return map[string]any{}, nil
 	}
+
 	return flatten(parsed), nil
 }
 
@@ -83,8 +92,8 @@ type limitedReadCloser struct {
 	c io.Closer
 }
 
-func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.r.Read(p) }
-func (l *limitedReadCloser) Close() error               { return l.c.Close() }
+func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.r.Read(p) } //nolint:wrapcheck //interface impl
+func (l *limitedReadCloser) Close() error               { return l.c.Close() } //nolint:wrapcheck //interface impl
 
 // osOpenFile is the production openFileFn. It enforces:
 //   - file must be a regular file (not FIFO/device/socket) → ErrNotRegularFile
@@ -92,23 +101,31 @@ func (l *limitedReadCloser) Close() error               { return l.c.Close() }
 //     before reading; also uses io.LimitReader as defense in depth)
 func osOpenFile(path string) (io.ReadCloser, error) {
 	clean := filepath.Clean(path)
+
 	f, err := os.Open(clean)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open: %w", err)
 	}
+
 	info, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
-		return nil, err
+
+		return nil, fmt.Errorf("stat: %w", err)
 	}
+
 	if !info.Mode().IsRegular() {
 		_ = f.Close()
+
 		return nil, fmt.Errorf("%s: %w", clean, ErrNotRegularFile)
 	}
+
 	if info.Size() > maxConfigBytes {
 		_ = f.Close()
+
 		return nil, fmt.Errorf("%s: %w", clean, ErrConfigFileTooLarge)
 	}
+
 	return &limitedReadCloser{
 		r: io.LimitReader(f, maxConfigBytes),
 		c: f,
