@@ -12,7 +12,7 @@ import (
 )
 
 // TestNewConfig_FileOnly tests loading configuration from files only.
-func TestNewConfig_FileOnly(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_FileOnly(t *testing.T) {
 	tests := []struct {
 		name        string
 		envVars     map[string]string
@@ -48,7 +48,7 @@ func TestNewConfig_FileOnly(t *testing.T) { //nolint:paralleltest // uses t.Sete
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+		t.Run(tt.name, func(t *testing.T) {
 			// Set environment variables
 			for key, value := range tt.envVars {
 				t.Setenv(key, value)
@@ -71,7 +71,7 @@ func TestNewConfig_FileOnly(t *testing.T) { //nolint:paralleltest // uses t.Sete
 }
 
 // TestNewConfig_FilesMerge tests merging of multiple configuration files.
-func TestNewConfig_FilesMerge(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_FilesMerge(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE_PATHS", "./testdata,./testdata")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
@@ -87,7 +87,7 @@ func TestNewConfig_FilesMerge(t *testing.T) { //nolint:paralleltest // uses t.Se
 }
 
 // TestNewConfig_FilesError tests error handling for file loading.
-func TestNewConfig_FilesError(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_FilesError(t *testing.T) {
 	tests := []struct {
 		name    string
 		envVars map[string]string
@@ -110,7 +110,7 @@ func TestNewConfig_FilesError(t *testing.T) { //nolint:paralleltest // uses t.Se
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+		t.Run(tt.name, func(t *testing.T) {
 			for key, value := range tt.envVars {
 				t.Setenv(key, value)
 			}
@@ -127,7 +127,7 @@ func TestNewConfig_FilesError(t *testing.T) { //nolint:paralleltest // uses t.Se
 }
 
 // TestNewConfig_EtcdStatic tests loading static configuration from etcd.
-func TestNewConfig_EtcdStatic(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_EtcdStatic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
 	}
@@ -167,7 +167,7 @@ func TestNewConfig_EtcdStatic(t *testing.T) { //nolint:paralleltest // uses t.Se
 }
 
 // TestNewConfig_EtcdStaticMultiplePaths tests loading multiple static configs from etcd.
-func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
 	}
@@ -216,7 +216,7 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) { //nolint:paralleltest
 }
 
 // TestNewConfig_EtcdDynamic tests loading dynamic configuration from etcd with watching.
-func TestNewConfig_EtcdDynamic(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_EtcdDynamic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
 	}
@@ -272,7 +272,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) { //nolint:paralleltest // uses t.S
 }
 
 // TestNewConfig_FullScenario tests complete scenario with files + static etcd + dynamic etcd.
-func TestNewConfig_FullScenario(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_FullScenario(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
 	}
@@ -323,7 +323,7 @@ func TestNewConfig_FullScenario(t *testing.T) { //nolint:paralleltest // uses t.
 // every other source, so reads through di.Get[string] for app.env /
 // app.service.name return the env-var values, not the etcd values. There is
 // no way to observe the etcd values through the public API anymore.
-func TestNewConfig_AppEnvImmutable(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestNewConfig_AppEnvImmutable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
 	}
@@ -380,7 +380,7 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) { //nolint:paralleltest // uses
 }
 
 // TestConfig_Methods tests Config getter methods (now via package-level generic API).
-func TestConfig_Methods(t *testing.T) { //nolint:paralleltest // uses t.Setenv
+func TestConfig_Methods(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE_PATHS", "./testdata")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
@@ -397,7 +397,7 @@ func TestConfig_Methods(t *testing.T) { //nolint:paralleltest // uses t.Setenv
 		assert.Equal(t, 5432, di.Get[int](cfg, "database.port"))
 	})
 
-	t.Run("Get_bool", func(t *testing.T) { //nolint:paralleltest
+	t.Run("Get_bool", func(t *testing.T) {
 		// Set a boolean value via env for testing — env > snapshot, so this
 		// resolves through the env lookup path.
 		t.Setenv("FEATURE_ENABLED", "true")
@@ -426,7 +426,7 @@ func TestConfig_Methods(t *testing.T) { //nolint:paralleltest // uses t.Setenv
 }
 
 // TestConfig_LiveMethods tests Config live (watcher) methods via the generic API.
-func TestConfig_LiveMethods(t *testing.T) { //nolint:tparallel,paralleltest // uses t.Setenv
+func TestConfig_LiveMethods(t *testing.T) { //nolint:tparallel
 	t.Setenv("APP_CONFIG_FILE_PATHS", "./testdata")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
