@@ -65,7 +65,7 @@ func TestNewConfig_FileOnly(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantEnv, cfg.GetAppEnv())
 			assert.Equal(t, tt.wantService, cfg.GetServiceName())
-			assert.Equal(t, tt.wantValue, cfg.GetString("database.host"))
+			assert.Equal(t, tt.wantValue, di.Get[string](cfg, "database.host"))
 		})
 	}
 }
@@ -82,8 +82,8 @@ func TestNewConfig_FilesMerge(t *testing.T) {
 	// Check that config was loaded
 	assert.Equal(t, "test", cfg.GetAppEnv())
 	assert.Equal(t, "test-service", cfg.GetServiceName())
-	assert.Equal(t, "localhost", cfg.GetString("database.host"))
-	assert.Equal(t, 5432, cfg.GetInt("database.port"))
+	assert.Equal(t, "localhost", di.Get[string](cfg, "database.host"))
+	assert.Equal(t, 5432, di.Get[int](cfg, "database.port"))
 }
 
 // TestNewConfig_FilesError tests error handling for file loading.
@@ -162,8 +162,8 @@ func TestNewConfig_EtcdStatic(t *testing.T) {
 		cfg.GetServiceName(),
 		"app.service.name should be immutable from env var",
 	)
-	assert.Equal(t, "etcd-db-host", cfg.GetString("database.host"))
-	assert.Equal(t, 3306, cfg.GetInt("database.port"))
+	assert.Equal(t, "etcd-db-host", di.Get[string](cfg, "database.host"))
+	assert.Equal(t, 3306, di.Get[int](cfg, "database.port"))
 }
 
 // TestNewConfig_EtcdStaticMultiplePaths tests loading multiple static configs from etcd.
@@ -205,12 +205,12 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify merge happened correctly
-	assert.Equal(t, "override-host", cfg.GetString("database.host"), "should use override value")
-	assert.Equal(t, 5432, cfg.GetInt("database.port"), "should keep base value")
+	assert.Equal(t, "override-host", di.Get[string](cfg, "database.host"), "should use override value")
+	assert.Equal(t, 5432, di.Get[int](cfg, "database.port"), "should keep base value")
 	assert.Equal(
 		t,
 		"redis-host",
-		cfg.GetString("redis.host"),
+		di.Get[string](cfg, "redis.host"),
 		"should have new value from override",
 	)
 }
@@ -248,7 +248,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify initial value
-	assert.Equal(t, 100, cfg.GetInt("limits.rateLimit"))
+	assert.Equal(t, 100, di.Get[int](cfg, "limits.rateLimit"))
 
 	// Update value in etcd
 	updatedData := map[string]any{
@@ -267,7 +267,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	// Native clientv3.Watch delivers events within milliseconds — poll with
 	// a short interval rather than sleeping a fixed duration.
 	require.Eventually(t, func() bool {
-		return cfg.GetInt("limits.rateLimit") == 200
+		return di.Get[int](cfg, "limits.rateLimit") == 200
 	}, 5*time.Second, 50*time.Millisecond, "value should be updated via watching")
 }
 
@@ -308,9 +308,9 @@ func TestNewConfig_FullScenario(t *testing.T) {
 
 	// Verify values from all sources
 	// Static etcd
-	assert.Equal(t, "etcd-static-host", cfg.GetString("database.host"))
+	assert.Equal(t, "etcd-static-host", di.Get[string](cfg, "database.host"))
 	// Dynamic etcd
-	assert.Equal(t, 500, cfg.GetInt("limits.rateLimit"))
+	assert.Equal(t, 500, di.Get[int](cfg, "limits.rateLimit"))
 	// App info from environment variables (immutable)
 	assert.Equal(t, "prod", cfg.GetAppEnv())
 	assert.Equal(t, "full-service", cfg.GetServiceName())
@@ -318,6 +318,11 @@ func TestNewConfig_FullScenario(t *testing.T) {
 
 // TestNewConfig_AppEnvImmutable tests that app.env and app.service.name from environment
 // variables remain immutable even when configs try to override them.
+//
+// Behavioural change vs. old viper-based implementation: env vars now win over
+// every other source, so reads through di.Get[string] for app.env /
+// app.service.name return the env-var values, not the etcd values. There is
+// no way to observe the etcd values through the public API anymore.
 func TestNewConfig_AppEnvImmutable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping etcd integration test in short mode")
@@ -333,9 +338,9 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 			"port": 5432,
 		},
 		"app": map[string]any{
-			"env": "wrong-env", // ← Should NOT override env var
+			"env": "wrong-env", // Should NOT override env var
 			"service": map[string]any{
-				"name": "wrong-service", // ← Should NOT override env var
+				"name": "wrong-service", // Should NOT override env var
 			},
 		},
 	}
@@ -365,18 +370,16 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 		"app.service.name should remain immutable from env var",
 	)
 
-	// Verify that other config values were loaded correctly
-	assert.Equal(t, "correct-db-host", cfg.GetString("database.host"))
-	assert.Equal(t, 5432, cfg.GetInt("database.port"))
+	// Reads through di.Get also resolve to env values (env > etcd > file > defaults).
+	assert.Equal(t, "correct-env", di.Get[string](cfg, "app.env"))
+	assert.Equal(t, "correct-service", di.Get[string](cfg, "app.service.name"))
 
-	// Verify that viper internal state may have changed, but Config uses immutable values
-	assert.Equal(t, "wrong-env", cfg.GetStorage().GetString("app.env"),
-		"viper may have wrong value internally")
-	assert.Equal(t, "wrong-service", cfg.GetStorage().GetString("app.service.name"),
-		"viper may have wrong value internally")
+	// Verify that other config values were loaded correctly
+	assert.Equal(t, "correct-db-host", di.Get[string](cfg, "database.host"))
+	assert.Equal(t, 5432, di.Get[int](cfg, "database.port"))
 }
 
-// TestConfig_Methods tests Config getter methods.
+// TestConfig_Methods tests Config getter methods (now via package-level generic API).
 func TestConfig_Methods(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE_PATHS", "./testdata")
 	t.Setenv("APP_ENV", "test")
@@ -386,30 +389,31 @@ func TestConfig_Methods(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test various getter methods
-	t.Run("GetString", func(t *testing.T) { //nolint:paralleltest
-		assert.Equal(t, "localhost", cfg.GetString("database.host"))
+	t.Run("Get_string", func(t *testing.T) { //nolint:paralleltest
+		assert.Equal(t, "localhost", di.Get[string](cfg, "database.host"))
 	})
 
-	t.Run("GetInt", func(t *testing.T) { //nolint:paralleltest
-		assert.Equal(t, 5432, cfg.GetInt("database.port"))
+	t.Run("Get_int", func(t *testing.T) { //nolint:paralleltest
+		assert.Equal(t, 5432, di.Get[int](cfg, "database.port"))
 	})
 
-	t.Run("GetBool", func(t *testing.T) {
-		// Set a boolean value via env for testing
+	t.Run("Get_bool", func(t *testing.T) {
+		// Set a boolean value via env for testing — env > snapshot, so this
+		// resolves through the env lookup path.
 		t.Setenv("FEATURE_ENABLED", "true")
-		assert.True(t, cfg.GetBool("feature.enabled"))
+		assert.True(t, di.Get[bool](cfg, "feature.enabled"))
 	})
 
-	t.Run("GetDuration", func(t *testing.T) { //nolint:paralleltest
-		duration := cfg.GetDuration("limits.timeout")
+	t.Run("Get_duration", func(t *testing.T) { //nolint:paralleltest
+		duration := di.Get[time.Duration](cfg, "limits.timeout")
 		assert.Equal(t, 30*time.Second, duration)
 	})
 
-	t.Run("GetStringOrDefault", func(t *testing.T) { //nolint:paralleltest
+	t.Run("GetOrDefault_string", func(t *testing.T) { //nolint:paralleltest
 		// Existing key
-		assert.Equal(t, "localhost", cfg.GetStringOrDefault("database.host", "default"))
+		assert.Equal(t, "localhost", di.GetOrDefault[string](cfg, "database.host", "default"))
 		// Non-existing key
-		assert.Equal(t, "default", cfg.GetStringOrDefault("nonexistent.key", "default"))
+		assert.Equal(t, "default", di.GetOrDefault[string](cfg, "nonexistent.key", "default"))
 	})
 
 	t.Run("GetAppEnv", func(t *testing.T) { //nolint:paralleltest
@@ -419,16 +423,10 @@ func TestConfig_Methods(t *testing.T) {
 	t.Run("GetServiceName", func(t *testing.T) { //nolint:paralleltest
 		assert.Equal(t, "test-service", cfg.GetServiceName())
 	})
-
-	t.Run("GetStorage", func(t *testing.T) { //nolint:paralleltest
-		storage := cfg.GetStorage()
-		assert.NotNil(t, storage)
-		assert.Equal(t, "localhost", storage.GetString("database.host"))
-	})
 }
 
-// TestConfig_WatchMethods tests Config watch methods.
-func TestConfig_WatchMethods(t *testing.T) { //nolint:tparallel
+// TestConfig_LiveMethods tests Config live (watcher) methods via the generic API.
+func TestConfig_LiveMethods(t *testing.T) { //nolint:tparallel
 	t.Setenv("APP_CONFIG_FILE_PATHS", "./testdata")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
@@ -436,39 +434,38 @@ func TestConfig_WatchMethods(t *testing.T) { //nolint:tparallel
 	cfg, err := di.NewConfig(t.Context())
 	require.NoError(t, err)
 
-	t.Run("WatchString", func(t *testing.T) {
+	t.Run("Live_string", func(t *testing.T) {
 		t.Parallel()
 
-		watcher := cfg.WatchString("database.host")
-		assert.Equal(t, "localhost", watcher())
+		live := di.Live[string](cfg, "database.host")
+		assert.Equal(t, "localhost", live())
 	})
 
-	t.Run("WatchInt", func(t *testing.T) {
+	t.Run("Live_int", func(t *testing.T) {
 		t.Parallel()
 
-		watcher := cfg.WatchInt("database.port")
-		assert.Equal(t, 5432, watcher())
+		live := di.Live[int](cfg, "database.port")
+		assert.Equal(t, 5432, live())
 	})
 
-	t.Run("WatchBool", func(t *testing.T) {
+	t.Run("Live_bool_missing_zero", func(t *testing.T) {
 		t.Parallel()
 
-		watcher := cfg.WatchBool("some.bool.key")
-		assert.False(t, watcher())
+		live := di.Live[bool](cfg, "some.bool.key")
+		assert.False(t, live())
 	})
 
-	t.Run("WatchDuration", func(t *testing.T) {
+	t.Run("Live_duration", func(t *testing.T) {
 		t.Parallel()
 
-		watcher := cfg.WatchDuration("limits.timeout")
-		assert.Equal(t, 30*time.Second, watcher())
+		live := di.Live[time.Duration](cfg, "limits.timeout")
+		assert.Equal(t, 30*time.Second, live())
 	})
 
-	t.Run("WatchStringSlice", func(t *testing.T) {
+	t.Run("Live_stringSlice_missing_empty", func(t *testing.T) {
 		t.Parallel()
 
-		watcher := cfg.WatchStringSlice("some.slice.key")
-		result := watcher()
-		assert.Empty(t, result)
+		live := di.Live[[]string](cfg, "some.slice.key")
+		assert.Empty(t, live())
 	})
 }

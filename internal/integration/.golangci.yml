@@ -15,6 +15,7 @@ linters:
     - noinlineerr
     - ireturn
     - wsl
+    - gomodguard
     # exhaustruct: integration tests call into external libraries
     # (testcontainers, amqp091, etcd clientv3) whose public structs have
     # dozens of optional fields. Listing every zero-value on every use

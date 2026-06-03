@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -371,8 +372,8 @@ func (s *Server) buildHandler() http.Handler {
 
 	// Apply user middlewares OUTSIDE the built-in wrappers so they are
 	// the outermost layer (first to see the request).
-	for i := len(s.middlewares) - 1; i >= 0; i-- {
-		handler = s.middlewares[i](handler)
+	for _, v := range slices.Backward(s.middlewares) {
+		handler = v(handler)
 	}
 
 	return handler
