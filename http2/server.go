@@ -438,6 +438,18 @@ func (t *trackingResponseWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
+// Unwrap exposes the underlying ResponseWriter so http.NewResponseController
+// (and stdlib probes for Flusher / Hijacker / Pusher) can reach it through
+// the recovery wrapper. Required for SSE and other streaming endpoints —
+// without it, a wrapped writer does not satisfy http.Flusher even when the
+// underlying server connection supports flushing, so SSE responses buffer
+// until the handler returns instead of streaming chunks.
+//
+// Standard Go 1.20+ idiom for any ResponseWriter wrapper.
+func (t *trackingResponseWriter) Unwrap() http.ResponseWriter {
+	return t.ResponseWriter
+}
+
 // Compile-time assertions.
 var (
 	_ lifecycle.Runner   = (*Server)(nil)

@@ -204,6 +204,41 @@ func TestServer_Recovery_CatchesPanic(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
 
+func TestServer_Recovery_PreservesFlusherViaResponseController(t *testing.T) {
+	t.Parallel()
+
+	l, base := helperListener(t)
+	srv := http2.NewServer(http2.Config{},
+		http2.WithListener(l),
+		http2.WithRecovery(),
+	)
+
+	flushErrCh := make(chan error, 1)
+
+	srv.Mount("/sse", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = w.Write([]byte("data: chunk\n\n"))
+
+		// trackingResponseWriter must expose Unwrap() so NewResponseController
+		// can reach the underlying writer's Flusher. Without Unwrap, Flush()
+		// returns http.ErrNotSupported and SSE responses buffer until the
+		// handler returns.
+		flushErrCh <- http.NewResponseController(w).Flush()
+	}))
+
+	cancel, errCh := runServer(t, srv)
+
+	defer func() { cancel(); <-errCh }()
+
+	resp := doGet(context.Background(), t, base+"/sse")
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.NoError(t, <-flushErrCh)
+}
+
 func TestServer_Mount_RegistersUserHandler(t *testing.T) {
 	t.Parallel()
 
