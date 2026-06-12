@@ -30,7 +30,6 @@ linters:
             - '!**/*_a _file.go'
           allow:
             - $gostd
-            - github.com/OpenPeeDeeP
           deny:
             - pkg: github.com/sirupsen/logrus
               desc: not allowed
@@ -62,6 +61,10 @@ linters:
         - wg
         - f
         - k
+        - n
+        - nc
+        - js
+        - h
   exclusions:
     generated: lax
     presets:
