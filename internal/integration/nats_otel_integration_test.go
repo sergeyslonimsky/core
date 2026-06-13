@@ -297,12 +297,16 @@ func TestNATS_UnsupportedContentType(t *testing.T) {
 	// Publish with non-JSON Content-Type — default decoder must reject.
 	require.NoError(t, publisher.Publish(t.Context(), subject, []byte("hello"),
 		corenats.WithHeaders(nats.Header{"Content-Type": []string{"text/plain"}})))
+	require.NoError(t, publisher.Flush(t.Context()))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
 
 	select {
 	case err := <-errSeen:
 		require.ErrorIs(t, err, corenats.ErrUnsupportedMessage)
-	case <-time.After(natsEventually):
-		t.Fatal("error handler never fired")
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for error handler:", ctx.Err())
 	}
 
 	assert.Zero(t, rec.Count(), "processor must not see decoded payload")
