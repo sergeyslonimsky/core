@@ -91,27 +91,6 @@ func TestParseCommaSeparatedPaths(t *testing.T) {
 	}
 }
 
-func TestBuildEtcdPath(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		env, svc, cfg, want string
-	}{
-		{"prod", "myservice", "config.yaml", "prod/myservice/config.yaml"},
-		{"dev", "test-service", "base.yaml", "dev/test-service/base.yaml"},
-		{"staging", "api", "infra/postgres.yaml", "staging/api/infra/postgres.yaml"},
-		{"", "", "config.yaml", "//config.yaml"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			t.Parallel()
-
-			assert.Equal(t, tt.want, buildEtcdPath(tt.env, tt.svc, tt.cfg))
-		})
-	}
-}
-
 func TestGetConfigTypeFromPath(t *testing.T) {
 	t.Parallel()
 
@@ -423,7 +402,7 @@ func TestNewConfig_StaticEtcdOverridesFile(t *testing.T) {
 	staticYaml := []byte("server:\n  port: 9000\n")
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/static.yaml", staticYaml)
+	fake.SetData("static.yaml", staticYaml)
 
 	cfg, err := newConfigWithDeps(t.Context(), configDeps{
 		envLookup: envFn(map[string]string{
@@ -449,10 +428,10 @@ func TestNewConfig_DynamicEtcdOverridesStatic(t *testing.T) {
 	dynamicYaml := []byte("server:\n  port: 9090\n")
 
 	staticFake := newFakeEtcdKV()
-	staticFake.SetData("dev/svc/static.yaml", staticYaml)
+	staticFake.SetData("static.yaml", staticYaml)
 
 	dynamicFake := newFakeEtcdKV()
-	dynamicFake.SetData("dev/svc/dyn.yaml", dynamicYaml)
+	dynamicFake.SetData("dyn.yaml", dynamicYaml)
 
 	// We need two different fakes — static and dynamic. Track factory calls.
 	var calls atomic.Int32
@@ -490,7 +469,7 @@ func TestNewConfig_EnvOverridesDynamicEtcd(t *testing.T) {
 	dynYaml := []byte("server:\n  port: 9090\n")
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", dynYaml)
+	fake.SetData("dyn.yaml", dynYaml)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -637,7 +616,7 @@ func TestLive_InitialAndAfterUpdate(t *testing.T) {
 	v2 := []byte("rate: 200\n")
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", v1)
+	fake.SetData("dyn.yaml", v1)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -657,9 +636,9 @@ func TestLive_InitialAndAfterUpdate(t *testing.T) {
 	assert.Equal(t, 100, rate())
 
 	// Wait for the watcher to subscribe before pushing.
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
 
-	fake.Set("dev/svc/dyn.yaml", v2)
+	fake.Set("dyn.yaml", v2)
 
 	assert.Eventually(t, func() bool {
 		return rate() == 200
@@ -672,7 +651,7 @@ func TestLive_EnvWinsOverDynamic(t *testing.T) {
 	dyn := []byte("rate: 100\n")
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", dyn)
+	fake.SetData("dyn.yaml", dyn)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -692,8 +671,8 @@ func TestLive_EnvWinsOverDynamic(t *testing.T) {
 	rate := Live[int](cfg, "rate")
 	assert.Equal(t, 999, rate())
 
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
-	fake.Set("dev/svc/dyn.yaml", []byte("rate: 50\n"))
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
+	fake.Set("dyn.yaml", []byte("rate: 50\n"))
 
 	// env keeps winning regardless of dynamic updates.
 	for range 5 {
@@ -937,7 +916,7 @@ func TestNewConfig_DynamicCloseOnCtxCancel(t *testing.T) {
 
 	yaml := []byte("k: v\n")
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", yaml)
+	fake.SetData("dyn.yaml", yaml)
 
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -953,7 +932,7 @@ func TestNewConfig_DynamicCloseOnCtxCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
 
 	cancel()
 
@@ -971,7 +950,7 @@ func TestNewConfig_AppEnvImmutableAgainstDynamicUpdate(t *testing.T) {
 
 	yaml := []byte("k: v\n")
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", yaml)
+	fake.SetData("dyn.yaml", yaml)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -990,9 +969,9 @@ func TestNewConfig_AppEnvImmutableAgainstDynamicUpdate(t *testing.T) {
 	original := cfg.GetAppEnv()
 	assert.Equal(t, AppEnvDev, original)
 
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
 	// Push an update that tries to override app.env.
-	fake.Set("dev/svc/dyn.yaml", []byte("app:\n  env: prod\n"))
+	fake.Set("dyn.yaml", []byte("app:\n  env: prod\n"))
 
 	// Wait for the snapshot to catch up so we know the watcher applied the update.
 	assert.Eventually(t, func() bool {
@@ -1011,7 +990,7 @@ func TestLive_Concurrency(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", []byte("rate: 1\n"))
+	fake.SetData("dyn.yaml", []byte("rate: 1\n"))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -1026,7 +1005,7 @@ func TestLive_Concurrency(t *testing.T) {
 		etcdFactory: fakeFactory(fake),
 	})
 	require.NoError(t, err)
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
 
 	rate := Live[int](cfg, "rate")
 	stop := make(chan struct{})
@@ -1043,7 +1022,7 @@ func TestLive_Concurrency(t *testing.T) {
 				return
 			default:
 				i++
-				fake.Set("dev/svc/dyn.yaml", fmt.Appendf(nil, "rate: %d\n", i))
+				fake.Set("dyn.yaml", fmt.Appendf(nil, "rate: %d\n", i))
 			}
 		}
 	})
@@ -1077,7 +1056,7 @@ func TestLive_StaleKeyDropped(t *testing.T) {
 	v2 := []byte("a: 1\n") // b removed
 
 	fake := newFakeEtcdKV()
-	fake.SetData("dev/svc/dyn.yaml", v1)
+	fake.SetData("dyn.yaml", v1)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -1094,8 +1073,8 @@ func TestLive_StaleKeyDropped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, Get[int](cfg, "b"))
 
-	require.True(t, fake.WaitForWatcher("dev/svc/dyn.yaml", 1, time.Second))
-	fake.Set("dev/svc/dyn.yaml", v2)
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
+	fake.Set("dyn.yaml", v2)
 
 	assert.Eventually(t, func() bool {
 		return Get[int](cfg, "b") == 0

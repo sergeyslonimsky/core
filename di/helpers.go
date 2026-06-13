@@ -2,7 +2,6 @@ package di
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,12 +41,6 @@ func parseCommaSeparatedPaths(pathsStr string) []string {
 	}
 
 	return result
-}
-
-// buildEtcdPath constructs the full etcd path from env, service name,
-// and config path.
-func buildEtcdPath(appEnv, serviceName, configPath string) string {
-	return fmt.Sprintf("%s/%s/%s", appEnv, serviceName, configPath)
 }
 
 // getConfigTypeFromPath extracts config type from path (e.g.,

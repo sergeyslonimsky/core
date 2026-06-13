@@ -25,6 +25,14 @@
 // fakeEtcdKV drives dynamic-update paths in unit tests without a real
 // etcd cluster.
 //
+// Path ownership: the caller passes full etcd keys via the
+// app.config.etcd.{static,dynamic}.paths env vars. core/di does not
+// prepend the service name or app env to the path. This keeps the
+// loader storage-agnostic — vanilla etcd accepts arbitrary keys, while
+// Elara and other layered stores require their own prefix conventions
+// (e.g. "/{namespace}/...") which the deployment system is responsible
+// for templating into the env var.
+//
 // Tunables (env vars):
 //
 //   - APP_CONFIG_ETCD_REQUEST_TIMEOUT: Go-duration string ("5s", "500ms")
@@ -100,9 +108,9 @@ func NewConfig(ctx context.Context) (*Config, error) {
 }
 
 // GetAppEnv returns the application environment captured at NewConfig
-// time. The value is immutable for the process lifetime — it builds
-// etcd paths and must not change mid-flight even if app.env appears in
-// a later etcd update.
+// time. The value is immutable for the process lifetime. Surfaces the
+// service's bootstrap identity (logs, metrics, traces); it is no longer
+// used to build etcd paths — see the package doc on path ownership.
 func (c *Config) GetAppEnv() string {
 	return c.appEnv
 }
@@ -235,7 +243,8 @@ type configDeps struct {
 func newConfigWithDeps(ctx context.Context, deps configDeps) (*Config, error) {
 	// 1. Bootstrap fields are read directly from env, never from file
 	// or etcd. They are immutable for the process lifetime and feed
-	// into the etcd path construction.
+	// the service identity (GetAppEnv/GetServiceName) used by logs,
+	// metrics and traces. Path construction itself lives in the caller.
 	appEnv := envOrDefault(deps.envLookup, "app.env", AppEnvDev)
 	serviceName, _ := lookupConfigEnv(deps.envLookup, "app.service.name")
 
@@ -263,7 +272,7 @@ func newConfigWithDeps(ctx context.Context, deps configDeps) (*Config, error) {
 
 	// 4. etcd static (if configured). Uses a transient client closed
 	// inside the helper.
-	staticMap, err := loadStaticEtcd(ctx, deps, appEnv, serviceName, requestTimeout)
+	staticMap, err := loadStaticEtcd(ctx, deps, serviceName, requestTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("load from etcd static: %w", err)
 	}
@@ -290,27 +299,22 @@ func newConfigWithDeps(ctx context.Context, deps configDeps) (*Config, error) {
 		return nil, err
 	}
 
-	fullPaths := make([]string, 0, len(dynamicPaths))
-	for _, p := range dynamicPaths {
-		fullPaths = append(fullPaths, buildEtcdPath(appEnv, serviceName, p))
-	}
-
 	kv, err := deps.etcdFactory(endpoint, requestTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("create etcd client: %w", err)
 	}
 
-	initial, err := loadEtcdPerPath(ctx, kv, fullPaths)
+	initial, err := loadEtcdPerPath(ctx, kv, dynamicPaths)
 	if err != nil {
 		_ = kv.Close()
 
 		return nil, fmt.Errorf("load from etcd dynamic: %w", err)
 	}
 
-	initialSnap := composeSnapshot(pre, fullPaths, initial)
+	initialSnap := composeSnapshot(pre, dynamicPaths, initial)
 	s.setSnapshot(initialSnap)
 
-	w := newDynamicWatcher(kv, fullPaths, pre, initial, s.setSnapshot)
+	w := newDynamicWatcher(kv, dynamicPaths, pre, initial, s.setSnapshot)
 
 	go w.run(ctx)
 
@@ -360,10 +364,15 @@ func loadFileConfigs(deps configDeps) (map[string]any, error) {
 // loadStaticEtcd reads app.config.etcd.static.paths (CSV) and merges
 // every referenced etcd key. Opens a transient etcd client, closes it
 // before returning. Returns (nil, nil) when no static paths are set.
+//
+// Paths are passed to etcd as-is. The caller (typically via env var
+// templated by the deployment system) is responsible for any
+// namespacing convention required by the etcd implementation it talks
+// to (vanilla etcd: anything; Elara: leading "/").
 func loadStaticEtcd(
 	ctx context.Context,
 	deps configDeps,
-	appEnv, serviceName string,
+	serviceName string,
 	requestTimeout time.Duration,
 ) (map[string]any, error) {
 	raw, has := lookupConfigEnv(deps.envLookup, "app.config.etcd.static.paths")
@@ -381,11 +390,6 @@ func loadStaticEtcd(
 		return nil, err
 	}
 
-	fullPaths := make([]string, 0, len(paths))
-	for _, p := range paths {
-		fullPaths = append(fullPaths, buildEtcdPath(appEnv, serviceName, p))
-	}
-
 	kv, err := deps.etcdFactory(endpoint, requestTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("create etcd client: %w", err)
@@ -395,7 +399,7 @@ func loadStaticEtcd(
 		_ = kv.Close()
 	}()
 
-	return loadEtcdOnce(ctx, kv, fullPaths)
+	return loadEtcdOnce(ctx, kv, paths)
 }
 
 // resolveDynamicPaths returns the list of relative paths to watch on
