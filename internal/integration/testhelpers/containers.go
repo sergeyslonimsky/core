@@ -22,7 +22,7 @@ import (
 // rabbitMQStartupTimeout is the container-start budget for RabbitMQ — generous
 // so a slow Docker host under parallel test load doesn't flake the port-listen
 // wait on the default 60s deadline.
-const rabbitMQStartupTimeout = 2 * time.Minute
+const rabbitMQStartupTimeout = 5 * time.Minute
 
 // SetupEtcdContainer starts an etcd container for testing.
 func SetupEtcdContainer(t *testing.T) (string, func()) {
