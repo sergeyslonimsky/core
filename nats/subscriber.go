@@ -197,19 +197,13 @@ func (s *Subscriber[I]) Run(ctx context.Context) error {
 
 	deliveries := make(chan *nats.Msg, s.channelBuffer)
 
-	var (
-		sub *nats.Subscription
-		err error
-	)
-
-	if s.queueGroup != "" {
-		sub, err = s.nc.ChanQueueSubscribe(s.subjectFilter, s.queueGroup, deliveries)
-	} else {
-		sub, err = s.nc.ChanSubscribe(s.subjectFilter, deliveries)
-	}
-
+	sub, err := s.subscribeAndFlush(ctx, deliveries)
 	if err != nil {
-		return fmt.Errorf("subscribe to subject %s: %w", s.subjectFilter, err)
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		return err
 	}
 
 	// Signal readiness AFTER Subscribe so consumers blocking on Ready() can
@@ -278,6 +272,39 @@ func (s *Subscriber[I]) Shutdown(ctx context.Context) error {
 	}
 
 	return ctxErr
+}
+
+func (s *Subscriber[I]) subscribeAndFlush(ctx context.Context, deliveries chan *nats.Msg) (*nats.Subscription, error) {
+	var (
+		sub *nats.Subscription
+		err error
+	)
+
+	if s.queueGroup != "" {
+		sub, err = s.nc.ChanQueueSubscribe(s.subjectFilter, s.queueGroup, deliveries)
+	} else {
+		sub, err = s.nc.ChanSubscribe(s.subjectFilter, deliveries)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("subscribe to subject %s: %w", s.subjectFilter, err)
+	}
+
+	// Flush the connection to ensure the subscription has been registered
+	// and processed by the NATS server before we signal readiness.
+	flushCtx := ctx
+	if _, ok := flushCtx.Deadline(); !ok {
+		var cancel context.CancelFunc
+
+		flushCtx, cancel = context.WithTimeout(ctx, defaultFlushTimeout)
+		defer cancel()
+	}
+
+	if err := s.nc.FlushWithContext(flushCtx); err != nil {
+		return nil, fmt.Errorf("flush subscription: %w", err)
+	}
+
+	return sub, nil
 }
 
 // workerLoop pulls deliveries until ctx is cancelled or the channel closes.
