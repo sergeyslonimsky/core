@@ -36,7 +36,7 @@ func TestNewConfig_EtcdDynamic_NativeWatchIsFast(t *testing.T) {
 	})
 
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "dynamic.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "test/fast-service/dynamic.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "fast-service")
 
@@ -77,7 +77,7 @@ func TestNewConfig_EtcdDynamic_MultiplePathsAllWatched(t *testing.T) {
 	})
 
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "base.yaml,extra.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "test/multi-service/base.yaml,test/multi-service/extra.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "multi-service")
 
@@ -124,7 +124,7 @@ func TestNewConfig_EtcdDynamic_DeleteIgnored(t *testing.T) {
 	})
 
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "dynamic.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "test/delete-service/dynamic.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "delete-service")
 
@@ -162,7 +162,7 @@ func TestNewConfig_EtcdDynamic_ReconnectAfterCompaction(t *testing.T) {
 	})
 
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "dynamic.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "test/reconnect-service/dynamic.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "reconnect-service")
 

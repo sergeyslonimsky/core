@@ -147,7 +147,7 @@ func TestNewConfig_EtcdStatic(t *testing.T) {
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "config.yaml")
+	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "test/test-service/config.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
 
@@ -197,7 +197,7 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "base.yaml,override.yaml")
+	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "test/test-service/base.yaml,test/test-service/override.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
 
@@ -240,7 +240,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 
 	// Set environment variables
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "dynamic.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "test/test-service/dynamic.yaml")
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_SERVICE_NAME", "test-service")
 
@@ -298,8 +298,8 @@ func TestNewConfig_FullScenario(t *testing.T) {
 
 	// Set environment variables (not using file config to avoid conflicts)
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "static.yaml")
-	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "dynamic.yaml")
+	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "prod/full-service/static.yaml")
+	t.Setenv("APP_CONFIG_ETCD_DYNAMIC_PATHS", "prod/full-service/dynamic.yaml")
 	t.Setenv("APP_ENV", "prod")
 	t.Setenv("APP_SERVICE_NAME", "full-service")
 
@@ -354,7 +354,7 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 
 	// Set environment variables - these should be immutable
 	t.Setenv("APP_CONFIG_ETCD_ENDPOINT", endpoint)
-	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "config.yaml")
+	t.Setenv("APP_CONFIG_ETCD_STATIC_PATHS", "correct-env/correct-service/config.yaml")
 	t.Setenv("APP_ENV", "correct-env")
 	t.Setenv("APP_SERVICE_NAME", "correct-service")
 
