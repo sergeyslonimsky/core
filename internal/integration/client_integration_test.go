@@ -18,7 +18,7 @@ func TestClient_NewClient_Integration(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx, cancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer cancel()
@@ -62,7 +62,7 @@ func TestClient_Shutdown_Idempotent(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx, cancel := context.WithTimeout(t.Context(), testhelpers.DefaultTestTimeout)
 	defer cancel()

@@ -135,7 +135,7 @@ func TestRabbitMQE2E_PublishToQueueAndConsume(t *testing.T) {
 	t.Parallel()
 
 	amqpURL, cleanup := testhelpers.SetupRabbitMQContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cfg := rabbitmqConfigFromURL(t, amqpURL)
 	queueName := "test-e2e-queue-core"
@@ -193,7 +193,7 @@ func TestRabbitMQE2E_DirectExchange(t *testing.T) {
 	t.Parallel()
 
 	amqpURL, cleanup := testhelpers.SetupRabbitMQContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cfg := rabbitmqConfigFromURL(t, amqpURL)
 
@@ -261,7 +261,7 @@ func TestRabbitMQE2E_FanoutExchange(t *testing.T) {
 	t.Parallel()
 
 	amqpURL, cleanup := testhelpers.SetupRabbitMQContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cfg := rabbitmqConfigFromURL(t, amqpURL)
 
@@ -355,7 +355,7 @@ func TestRabbitMQE2E_WorkerPool(t *testing.T) {
 	t.Parallel()
 
 	amqpURL, cleanup := testhelpers.SetupRabbitMQContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cfg := rabbitmqConfigFromURL(t, amqpURL)
 
@@ -413,7 +413,7 @@ func TestRabbitMQE2E_ProcessorErrorIsNacked(t *testing.T) {
 	t.Parallel()
 
 	amqpURL, cleanup := testhelpers.SetupRabbitMQContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cfg := rabbitmqConfigFromURL(t, amqpURL)
 

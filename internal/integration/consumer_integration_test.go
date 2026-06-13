@@ -103,7 +103,7 @@ func TestConsumer_NewConsumer_Success(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-creation"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -125,7 +125,7 @@ func TestConsumer_ConsumeMessages(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-consume"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -166,7 +166,7 @@ func TestConsumer_MultipleTopics(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic1 := "test-consumer-topic-1"
 	topic2 := "test-consumer-topic-2"
@@ -220,7 +220,7 @@ func TestConsumer_ProcessorError_DefaultSkipPolicy(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-processor-error-skip"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -252,7 +252,7 @@ func TestConsumer_ErrorHandler_Stop(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-handler-stop"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -300,7 +300,7 @@ func TestConsumer_ConsumerGroup_Rebalance(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-group-rebalance"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3)
@@ -415,7 +415,7 @@ func TestConsumer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-cancel"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -462,7 +462,7 @@ func TestConsumer_HighThroughput(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-consumer-throughput"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3)

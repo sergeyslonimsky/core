@@ -151,7 +151,7 @@ func SetupKafkaContainer(t *testing.T) (string, func()) {
 	require.NoError(t, err, "failed to get broker address")
 
 	cleanup := func() {
-		if err := redpandaContainer.Terminate(t.Context()); err != nil {
+		if err := redpandaContainer.Terminate(context.Background()); err != nil {
 			t.Logf("failed to terminate RedPanda container: %v", err)
 		}
 	}

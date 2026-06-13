@@ -29,7 +29,7 @@ func TestNewConfig_EtcdDynamic_NativeWatchIsFast(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	testhelpers.PutEtcdValue(t, endpoint, "test/fast-service/dynamic.yaml", map[string]any{
 		"limits": map[string]any{"rateLimit": 100},
@@ -64,7 +64,7 @@ func TestNewConfig_EtcdDynamic_MultiplePathsAllWatched(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	basePath := "test/multi-service/base.yaml"
 	extraPath := "test/multi-service/extra.yaml"
@@ -116,7 +116,7 @@ func TestNewConfig_EtcdDynamic_DeleteIgnored(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	key := "test/delete-service/dynamic.yaml"
 	testhelpers.PutEtcdValue(t, endpoint, key, map[string]any{
@@ -154,7 +154,7 @@ func TestNewConfig_EtcdDynamic_ReconnectAfterCompaction(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	key := "test/reconnect-service/dynamic.yaml"
 	testhelpers.PutEtcdValue(t, endpoint, key, map[string]any{

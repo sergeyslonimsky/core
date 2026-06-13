@@ -37,7 +37,7 @@ func TestProducer_Produce_Success(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-produce-single"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -58,7 +58,7 @@ func TestProducer_ProduceMultiple(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-produce-multiple"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -100,7 +100,7 @@ func TestProducer_SameKeySamePartition(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-produce-key"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3) // 3 partitions
@@ -143,7 +143,7 @@ func TestProducer_ConcurrentProduce(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-concurrent-produce"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3)
@@ -197,7 +197,7 @@ func TestJSONProducer_Produce_Success(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-json-produce"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -222,7 +222,7 @@ func TestJSONProducer_ProduceWithKey(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-json-produce-key"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -248,7 +248,7 @@ func TestProducer_ShutdownIdempotent(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	producer, err := kafka.NewProducer(kafka.ProducerConfig{Brokers: []string{brokerURL}})
 	require.NoError(t, err)

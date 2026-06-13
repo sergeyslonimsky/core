@@ -133,7 +133,7 @@ func TestNewConfig_EtcdStatic(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Prepare test data in etcd
 	testData := map[string]any{
@@ -173,7 +173,7 @@ func TestNewConfig_EtcdStaticMultiplePaths(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Prepare first config
 	baseConfig := map[string]any{
@@ -222,7 +222,7 @@ func TestNewConfig_EtcdDynamic(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Prepare initial data
 	initialData := map[string]any{
@@ -278,7 +278,7 @@ func TestNewConfig_FullScenario(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Prepare static etcd config
 	staticConfig := map[string]any{
@@ -329,7 +329,7 @@ func TestNewConfig_AppEnvImmutable(t *testing.T) {
 	}
 
 	endpoint, cleanup := testhelpers.SetupEtcdContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Prepare etcd config that tries to override app.env and app.service.name
 	configWithOverrides := map[string]any{

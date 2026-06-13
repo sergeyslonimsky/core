@@ -22,7 +22,7 @@ func TestE2E_ProduceAndConsume(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-e2e-basic"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -85,7 +85,7 @@ func TestE2E_JSONProduceAndConsume(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-e2e-json"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
@@ -141,7 +141,7 @@ func TestE2E_MultiplePartitions(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-e2e-partitions"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3)
@@ -213,7 +213,7 @@ func TestE2E_OrderGuarantee(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-e2e-order"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 3)
@@ -288,7 +288,7 @@ func TestE2E_ErrorHandler_RetryDoesNotCommit(t *testing.T) {
 	t.Parallel()
 
 	brokerURL, cleanup := testhelpers.SetupKafkaContainer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	topic := "test-e2e-retry"
 	testhelpers.CreateTestTopic(t, brokerURL, topic, 1)
