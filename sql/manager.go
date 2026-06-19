@@ -40,6 +40,13 @@ type Manager interface {
 	// GetQuerier returns the active transaction's Querier if ctx was
 	// produced by WithTx; otherwise returns the manager's underlying *DB.
 	GetQuerier(ctx context.Context) Querier
+
+	// HasTx reports whether ctx already carries a WithTx-controlled
+	// transaction. Leaf primitives that MUST run inside a caller-owned
+	// transaction (e.g. a ledger writer that pairs a balance update with an
+	// audit insert) can use it to fail fast instead of silently auto-
+	// committing each statement.
+	HasTx(ctx context.Context) bool
 }
 
 // DBManager is the default Manager implementation backed by a *DB.
@@ -60,6 +67,13 @@ func (m *DBManager) GetQuerier(ctx context.Context) Querier {
 	}
 
 	return tx
+}
+
+// HasTx — see Manager.HasTx.
+func (m *DBManager) HasTx(ctx context.Context) bool {
+	_, ok := ctx.Value(txKey{}).(Querier)
+
+	return ok
 }
 
 // WithTx — see Manager.WithTx.
