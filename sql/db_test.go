@@ -150,6 +150,37 @@ func TestManagerQuerier(t *testing.T) {
 	}
 }
 
+func TestUnwrapTx(t *testing.T) {
+	t.Parallel()
+
+	manager, mock := setupTestDB(t)
+	mock.ExpectBegin()
+	mock.ExpectCommit()
+	mock.ExpectClose()
+
+	ctx := t.Context()
+
+	// Outside a transaction there is nothing to unwrap.
+	tx, ok := csql.UnwrapTx(ctx)
+	assert.False(t, ok)
+	assert.Nil(t, tx)
+
+	err := manager.WithTx(ctx, func(tCtx context.Context) error {
+		// Inside WithTx the raw *sql.Tx is reachable for libraries that
+		// enlist through their own *sql.Tx-based API.
+		innerTx, innerOK := csql.UnwrapTx(tCtx)
+		assert.True(t, innerOK)
+		assert.NotNil(t, innerTx)
+
+		// The parent ctx still carries no transaction.
+		_, parentOK := csql.UnwrapTx(ctx)
+		assert.False(t, parentOK)
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 func setupTestDB(t *testing.T) (*csql.DBManager, sqlmock.Sqlmock) {
 	t.Helper()
 

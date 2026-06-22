@@ -18,6 +18,23 @@ type sqlTx struct {
 	tx *sqlx.Tx
 }
 
+// UnwrapTx returns the underlying *sql.Tx if ctx carries a WithTx-controlled
+// transaction (true), or nil and false otherwise.
+//
+// It exists for libraries that must enlist in the caller's transaction through
+// their own *sql.Tx-based API (e.g. a durable job queue's transactional
+// enqueue) so that enqueue commits atomically with the surrounding business
+// writes. Prefer Manager.GetQuerier for ordinary queries; reach for UnwrapTx
+// only when an external API demands the raw *sql.Tx.
+func UnwrapTx(ctx context.Context) (*sql.Tx, bool) {
+	t, ok := ctx.Value(txKey{}).(*sqlTx)
+	if !ok || t == nil || t.tx == nil {
+		return nil, false
+	}
+
+	return t.tx.Tx, true
+}
+
 func newTx(ctx context.Context, db *sqlx.DB, opts *sql.TxOptions) (*sqlTx, error) {
 	sqlxTx, err := db.BeginTxx(ctx, opts)
 	if err != nil {
