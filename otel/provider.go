@@ -93,6 +93,11 @@ type Config struct {
 	// ServiceVersion populates service.version. Optional.
 	ServiceVersion string
 
+	// Env populates deployment.environment (the deployment tier such as
+	// "dev", "staging", "production"). Optional. Stamped on the shared
+	// resource so it propagates to every signal — traces, metrics, logs.
+	Env string
+
 	// HostName populates host.name. Optional.
 	HostName string
 
@@ -277,6 +282,7 @@ func newResource(cfg Config) *sdkresource.Resource {
 		semconv.SchemaURL,
 		semconv.ServiceName(cfg.ServiceName),
 		semconv.ServiceVersion(cfg.ServiceVersion),
+		semconv.DeploymentEnvironment(cfg.Env),
 		semconv.HostName(cfg.HostName),
 		semconv.K8SNamespaceName(cfg.K8SNamespace),
 		semconv.K8SNodeName(cfg.K8SNodeName),
