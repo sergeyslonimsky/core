@@ -335,7 +335,7 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	// Flush any outstanding Nak/Ack messages sent by workers or drainBuffered
 	// before exiting Run.
 	flushCtx2 := context.Background()
-	if c.nc.Status() == nats.CONNECTED {
+	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
 		var cancel2 context.CancelFunc
 		flushCtx2, cancel2 = context.WithTimeout(flushCtx2, defaultFlushTimeout)
 		defer cancel2()
@@ -385,25 +385,27 @@ func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	flushCtx := ctx
-	if _, ok := flushCtx.Deadline(); !ok {
-		var cancelFunc context.CancelFunc
-		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
-		defer cancelFunc()
-	}
+	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
+		flushCtx := ctx
+		if _, ok := flushCtx.Deadline(); !ok {
+			var cancelFunc context.CancelFunc
+			flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
+			defer cancelFunc()
+		}
 
-	if err := c.nc.FlushWithContext(flushCtx); err != nil {
-		c.logger.WarnContext(ctx, "jetstream consumer flush failed during shutdown", slog.Any("err", err))
-	} else {
-		// Give the server-side JetStream engine a moment to process the flushed NAKs/ACKs
-		// before we tear down the connection.
-		select {
-		case <-ctx.Done():
-		case <-time.After(100 * time.Millisecond):
+		if err := c.nc.FlushWithContext(flushCtx); err != nil {
+			c.logger.WarnContext(ctx, "jetstream consumer flush failed during shutdown", slog.Any("err", err))
+		} else {
+			// Give the server-side JetStream engine a moment to process the flushed NAKs/ACKs
+			// before we tear down the connection.
+			select {
+			case <-ctx.Done():
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
 	}
 
-	if c.ownsConnection {
+	if c.ownsConnection && c.nc != nil {
 		c.logger.InfoContext(ctx, "shutting down jetstream consumer NATS connection")
 		c.nc.Close()
 	}
