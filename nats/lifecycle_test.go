@@ -631,6 +631,7 @@ func TestJetStreamConsumer_shutdownNaksBufferedDeliveries(t *testing.T) {
 		jsTestDurable,
 		secondProc,
 		JSConsumerHandlers[string]{},
+		WithJSAssumeExistingConsumer(),
 	)
 	require.NoError(t, err)
 

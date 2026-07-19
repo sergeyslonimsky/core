@@ -277,6 +277,18 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 		return fmt.Errorf("start JetStream consume: %w", err)
 	}
 
+	// Flush the connection to ensure the subscription has been registered
+	// and processed by the NATS server before we signal readiness.
+	flushCtx := ctx
+	if _, ok := flushCtx.Deadline(); !ok {
+		var cancelFunc context.CancelFunc
+		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
+		defer cancelFunc()
+	}
+	if err := c.nc.FlushWithContext(flushCtx); err != nil {
+		c.logger.ErrorContext(ctx, "flush subscription failed", slog.Any("err", err))
+	}
+
 	closeReady()
 
 	// Build the per-message Process function ONCE per Run cycle. With OTel
@@ -320,6 +332,16 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	// without locking — no other goroutine can touch `deliveries` now.
 	c.drainBuffered(deliveries)
 
+	// Flush any outstanding Nak/Ack messages sent by workers or drainBuffered
+	// before exiting Run.
+	flushCtx2 := context.Background()
+	if c.nc.Status() == nats.CONNECTED {
+		var cancel2 context.CancelFunc
+		flushCtx2, cancel2 = context.WithTimeout(flushCtx2, defaultFlushTimeout)
+		defer cancel2()
+		_ = c.nc.FlushWithContext(flushCtx2)
+	}
+
 	return fatalErr
 }
 
@@ -360,6 +382,24 @@ func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
 		case <-done:
 		case <-ctx.Done():
 			ctxErr = fmt.Errorf("jetstream consumer shutdown: %w", ctx.Err())
+		}
+	}
+
+	flushCtx := ctx
+	if _, ok := flushCtx.Deadline(); !ok {
+		var cancelFunc context.CancelFunc
+		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
+		defer cancelFunc()
+	}
+
+	if err := c.nc.FlushWithContext(flushCtx); err != nil {
+		c.logger.WarnContext(ctx, "jetstream consumer flush failed during shutdown", slog.Any("err", err))
+	} else {
+		// Give the server-side JetStream engine a moment to process the flushed NAKs/ACKs
+		// before we tear down the connection.
+		select {
+		case <-ctx.Done():
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 
