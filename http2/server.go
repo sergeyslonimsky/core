@@ -450,8 +450,29 @@ func (t *trackingResponseWriter) Unwrap() http.ResponseWriter {
 	return t.ResponseWriter
 }
 
+// Flush implements http.Flusher so streaming handlers that type-assert the
+// ResponseWriter for a flusher DIRECTLY — instead of going through
+// http.NewResponseController — still flush through the recovery wrapper.
+// Connect / gRPC server-stream handlers do exactly this: connectrpc's
+// checkServerStreamsCanFlush requires the writer to satisfy http.Flusher on a
+// bare type assertion, which Unwrap() alone does not provide. Without this the
+// wrapped writer fails that check and server-streaming RPCs return an internal
+// error even though the underlying connection supports flushing.
+//
+// Delegates through a ResponseController on the underlying writer, which walks
+// the Unwrap chain to reach the real flusher; the bare t.ResponseWriter target
+// avoids recursing back into this method.
+func (t *trackingResponseWriter) Flush() {
+	// Best-effort: nothing actionable if the underlying writer cannot flush.
+	_ = http.NewResponseController(t.ResponseWriter).Flush()
+}
+
 // Compile-time assertions.
 var (
 	_ lifecycle.Runner   = (*Server)(nil)
 	_ lifecycle.Resource = (*Server)(nil)
+
+	// trackingResponseWriter must satisfy http.Flusher on a bare type assertion
+	// (connectrpc server-streaming requirement), not only via Unwrap.
+	_ http.Flusher = (*trackingResponseWriter)(nil)
 )

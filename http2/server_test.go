@@ -239,6 +239,38 @@ func TestServer_Recovery_PreservesFlusherViaResponseController(t *testing.T) {
 	assert.NoError(t, <-flushErrCh)
 }
 
+func TestServer_Recovery_WriterSatisfiesFlusherDirectly(t *testing.T) {
+	t.Parallel()
+
+	l, base := helperListener(t)
+	srv := http2.NewServer(http2.Config{},
+		http2.WithListener(l),
+		http2.WithRecovery(),
+	)
+
+	flushableCh := make(chan bool, 1)
+
+	srv.Mount("/direct", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// connectrpc's server-stream flush check does a BARE assertion
+		// (w.(http.Flusher)) rather than going through NewResponseController,
+		// so the recovery wrapper must satisfy http.Flusher directly.
+		_, flushable := w.(http.Flusher)
+		flushableCh <- flushable
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cancel, errCh := runServer(t, srv)
+
+	defer func() { cancel(); <-errCh }()
+
+	resp := doGet(context.Background(), t, base+"/direct")
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, <-flushableCh, "recovery-wrapped writer must satisfy http.Flusher directly")
+}
+
 func TestServer_Mount_RegistersUserHandler(t *testing.T) {
 	t.Parallel()
 
