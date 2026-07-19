@@ -248,15 +248,12 @@ func TestBuildJSPublishOpts_empty(t *testing.T) {
 func TestBuildJSPublishOpts_populated(t *testing.T) {
 	t.Parallel()
 
-	seq := uint64(42)
-	subSeq := uint64(7)
-
 	opts := JSPublishOpts{
 		Headers:                nats.Header{"X-Tenant": []string{"acme"}},
 		MsgID:                  "msg-1",
 		ExpectedStream:         "EVENTS",
-		ExpectedLastSequence:   &seq,
-		ExpectedLastSubjectSeq: &subSeq,
+		ExpectedLastSequence:   new(uint64(42)),
+		ExpectedLastSubjectSeq: new(uint64(7)),
 		ExpectedLastMsgID:      "prev",
 		RetryAttempts:          5,
 	}

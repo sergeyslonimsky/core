@@ -420,7 +420,7 @@ func TestConfig_MaxReconnectsExplicitZero(t *testing.T) {
 
 	url := runInProcessNATS(t)
 
-	cfg := Config{URL: url, MaxReconnects: IntPtr(0)}
+	cfg := Config{URL: url, MaxReconnects: new(0)}
 	nc, err := connectNATS(cfg, nil, nil)
 	require.NoError(t, err)
 
@@ -435,7 +435,7 @@ func TestConfig_MaxReconnectsForever(t *testing.T) {
 
 	url := runInProcessNATS(t)
 
-	cfg := Config{URL: url, MaxReconnects: IntPtr(MaxReconnectsForever)}
+	cfg := Config{URL: url, MaxReconnects: new(MaxReconnectsForever)}
 	nc, err := connectNATS(cfg, nil, nil)
 	require.NoError(t, err)
 

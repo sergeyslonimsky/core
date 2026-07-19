@@ -22,7 +22,7 @@ const MaxReconnectsForever = -1
 
 // IntPtr returns a pointer to v. Helper for filling *int fields like
 // Config.MaxReconnects with a literal value.
-func IntPtr(v int) *int { return &v }
+func IntPtr(v int) *int { return new(v) }
 
 // Config describes NATS connection parameters. All authentication fields are
 // optional; supply at most one of (User+Password), Token, or CredsFile.

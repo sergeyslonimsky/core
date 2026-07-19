@@ -108,7 +108,7 @@ func (r *realEtcdKV) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s", ErrEtcdKeyNotFound, key)
 	}
 
-	return resp.Kvs[0].Value, nil
+	return resp.Kvs[0].GetValue(), nil
 }
 
 // Watch opens a clientv3 watch on key and proxies events into a buffered
@@ -173,9 +173,9 @@ func translateEvent(ev *clientv3.Event) watchEvent {
 	case clientv3.EventTypeDelete:
 		return watchEvent{Type: eventDelete, Value: nil, Err: nil}
 	case clientv3.EventTypePut:
-		return watchEvent{Type: eventPut, Value: ev.Kv.Value, Err: nil}
+		return watchEvent{Type: eventPut, Value: ev.Kv.GetValue(), Err: nil}
 	default:
-		return watchEvent{Type: eventPut, Value: ev.Kv.Value, Err: nil}
+		return watchEvent{Type: eventPut, Value: ev.Kv.GetValue(), Err: nil}
 	}
 }
 

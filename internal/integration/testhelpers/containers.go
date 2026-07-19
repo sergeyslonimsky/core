@@ -117,7 +117,7 @@ func CompactEtcdAtLatest(t *testing.T, endpoint string) {
 	resp, err := cli.Get(ctx, "/")
 	require.NoError(t, err, "failed to read current revision for compaction")
 
-	_, err = cli.Compact(ctx, resp.Header.Revision, clientv3.WithCompactPhysical())
+	_, err = cli.Compact(ctx, resp.Header.GetRevision(), clientv3.WithCompactPhysical())
 	require.NoError(t, err, "failed to compact etcd")
 }
 

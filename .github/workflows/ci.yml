@@ -38,7 +38,7 @@ jobs:
         with:
           version: v2.12.2
           working-directory: ${{ matrix.module }}
-          args: --timeout=5m
+          args: --timeout=5m ./...
 
   # Test on a matrix of supported Go versions so consumers on either can
   # trust core to work. Stable = oldest declared in go.mod; latest = next
@@ -49,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [ '1.25', '1.26' ]
+        go-version: [ '1.26' ]
     steps:
       - uses: actions/checkout@v4
 
@@ -73,7 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [ '1.25.x', '1.26.x' ]
+        go-version: [ '1.26.x' ]
     steps:
       - uses: actions/checkout@v4
 

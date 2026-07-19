@@ -128,8 +128,7 @@ func (f publisherOptionFunc) applyToPublisher(o *publisherOptions) { f(o) }
 // constructor returns an error if the stream cannot be declared.
 func WithPublisherStream(cfg jetstream.StreamConfig) PublisherOption {
 	return publisherOptionFunc(func(o *publisherOptions) {
-		copyCfg := cfg
-		o.streamConfig = &copyCfg
+		o.streamConfig = new(cfg)
 	})
 }
 
@@ -258,8 +257,7 @@ func (f jsConsumerOptionFunc) applyToJSConsumer(o *jsConsumerOptions) { f(o) }
 // JetStream stream with the given configuration at construction time.
 func WithJSStream(cfg jetstream.StreamConfig) JSConsumerOption {
 	return jsConsumerOptionFunc(func(o *jsConsumerOptions) {
-		copyCfg := cfg
-		o.streamConfig = &copyCfg
+		o.streamConfig = new(cfg)
 	})
 }
 
