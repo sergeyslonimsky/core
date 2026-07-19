@@ -213,42 +213,24 @@ const shutdownFlushDelay = 100 * time.Millisecond
 //
 // Implements lifecycle.Runner.
 //
-//nolint:funlen,cyclop // single-method lifecycle coordinator: split would obscure ordering.
+//nolint:funlen // single-method lifecycle coordinator: split would obscure ordering.
 func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	c.mu.Lock()
-	if c.cancelFn != nil {
-		c.mu.Unlock()
-
-		return ErrAlreadyRunning
+	if err := c.registerRun(cancel); err != nil {
+		return err
 	}
-
-	c.cancelFn = cancel
-	c.done = make(chan struct{})
-
-	// Re-arm Ready for this Run cycle so Ready() blocks on the new
-	// subscribe completion rather than returning an already-closed channel
-	// from the previous Run.
-	//
-	// Assigning a fresh sync.Once is safe: we hold mu, no goroutine can be
-	// inside readyOnce.Do concurrently, and we are replacing — not copying —
-	// a used Once with a zero-value struct.
-	if isClosed(c.ready) {
-		c.ready = make(chan struct{})
-		c.readyOnce = sync.Once{}
-	}
-	c.mu.Unlock()
 
 	var (
 		fatalErr     error
 		fatalErrOnce sync.Once
-		stop         = func(err error) {
-			fatalErrOnce.Do(func() { fatalErr = err })
-			cancel()
-		}
 	)
+
+	stop := func(err error) {
+		fatalErrOnce.Do(func() { fatalErr = err })
+		cancel()
+	}
 
 	// closeReady ensures Ready() callers unblock on every exit path,
 	// including subscription-registration failures.
@@ -278,27 +260,13 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 		return fmt.Errorf("start JetStream consume: %w", err)
 	}
 
-	// Flush the connection to ensure the subscription has been registered
-	// and processed by the NATS server before we signal readiness.
-	flushCtx := ctx
-
-	if _, ok := flushCtx.Deadline(); !ok {
-		var cancelFunc context.CancelFunc
-
-		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
-		defer cancelFunc()
-	}
-
-	if err := c.nc.FlushWithContext(flushCtx); err != nil {
-		c.logger.ErrorContext(ctx, "flush subscription failed", slog.Any("err", err))
-	}
+	c.flushSubscription(ctx)
 
 	closeReady()
 
 	// Build the per-message Process function ONCE per Run cycle. With OTel
 	// enabled the wrapper closes over a tracer + the user's Process method
 	// value, so creating it per-message would allocate on every delivery.
-
 	process := c.processor.Process
 
 	if c.otelEnabled {
@@ -338,20 +306,58 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	// without locking — no other goroutine can touch `deliveries` now.
 	c.drainBuffered(deliveries)
 
-	// Flush any outstanding Nak/Ack messages sent by workers or drainBuffered
-	// before exiting Run.
-	flushCtx2 := context.WithoutCancel(ctx)
-
-	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
-		var cancel2 context.CancelFunc
-
-		flushCtx2, cancel2 = context.WithTimeout(flushCtx2, defaultFlushTimeout)
-		defer cancel2()
-
-		_ = c.nc.FlushWithContext(flushCtx2)
-	}
+	c.flushOutstanding(ctx)
 
 	return fatalErr
+}
+
+func (c *JetStreamConsumer[I]) registerRun(cancel context.CancelFunc) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.cancelFn != nil {
+		return ErrAlreadyRunning
+	}
+
+	c.cancelFn = cancel
+	c.done = make(chan struct{})
+
+	if isClosed(c.ready) {
+		c.ready = make(chan struct{})
+		c.readyOnce = sync.Once{}
+	}
+
+	return nil
+}
+
+func (c *JetStreamConsumer[I]) flushSubscription(ctx context.Context) {
+	flushCtx := ctx
+
+	if _, ok := flushCtx.Deadline(); !ok {
+		var cancelFunc context.CancelFunc
+
+		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
+		defer cancelFunc()
+	}
+
+	if err := c.nc.FlushWithContext(flushCtx); err != nil {
+		c.logger.ErrorContext(ctx, "flush subscription failed", slog.Any("err", err))
+	}
+}
+
+func (c *JetStreamConsumer[I]) flushOutstanding(ctx context.Context) {
+	if c.nc == nil || c.nc.Status() != nats.CONNECTED {
+		return
+	}
+
+	flushCtx := context.WithoutCancel(ctx)
+
+	var cancel context.CancelFunc
+
+	flushCtx, cancel = context.WithTimeout(flushCtx, defaultFlushTimeout)
+	defer cancel()
+
+	_ = c.nc.FlushWithContext(flushCtx)
 }
 
 // drainBuffered NAKs every message currently buffered in deliveries and
@@ -376,54 +382,68 @@ func (c *JetStreamConsumer[I]) drainBuffered(deliveries <-chan jetstream.Msg) {
 // closed so the resource does not leak.
 //
 // Implements lifecycle.Resource. Idempotent.
-//
-//nolint:cyclop // shutdown logic includes safety flushes and fallback contexts
 func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
+	ctxErr := c.cancelAndWait(ctx)
+
+	c.flushShutdown(ctx)
+	c.closeConnection(ctx)
+
+	return ctxErr
+}
+
+func (c *JetStreamConsumer[I]) cancelAndWait(ctx context.Context) error {
 	c.mu.Lock()
 	cancel := c.cancelFn
 	done := c.done
 	c.mu.Unlock()
 
-	var ctxErr error
-
-	if cancel != nil {
-		cancel()
-
-		select {
-		case <-done:
-		case <-ctx.Done():
-			ctxErr = fmt.Errorf("jetstream consumer shutdown: %w", ctx.Err())
-		}
+	if cancel == nil {
+		return nil
 	}
 
-	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
-		flushCtx := ctx
+	cancel()
 
-		if _, ok := flushCtx.Deadline(); !ok {
-			var cancelFunc context.CancelFunc
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("jetstream consumer shutdown: %w", ctx.Err())
+	}
+}
 
-			flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
-			defer cancelFunc()
-		}
-
-		if err := c.nc.FlushWithContext(flushCtx); err != nil {
-			c.logger.WarnContext(ctx, "jetstream consumer flush failed during shutdown", slog.Any("err", err))
-		} else {
-			// Give the server-side JetStream engine a moment to process the flushed NAKs/ACKs
-			// before we tear down the connection.
-			select {
-			case <-ctx.Done():
-			case <-time.After(shutdownFlushDelay):
-			}
-		}
+func (c *JetStreamConsumer[I]) flushShutdown(ctx context.Context) {
+	if c.nc == nil || c.nc.Status() != nats.CONNECTED {
+		return
 	}
 
+	flushCtx := ctx
+
+	if _, ok := flushCtx.Deadline(); !ok {
+		var cancelFunc context.CancelFunc
+
+		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
+		defer cancelFunc()
+	}
+
+	if err := c.nc.FlushWithContext(flushCtx); err != nil {
+		c.logger.WarnContext(ctx, "jetstream consumer flush failed during shutdown", slog.Any("err", err))
+
+		return
+	}
+
+	// Give the server-side JetStream engine a moment to process the flushed NAKs/ACKs
+	// before we tear down the connection.
+	select {
+	case <-ctx.Done():
+	case <-time.After(shutdownFlushDelay):
+	}
+}
+
+func (c *JetStreamConsumer[I]) closeConnection(ctx context.Context) {
 	if c.ownsConnection && c.nc != nil {
 		c.logger.InfoContext(ctx, "shutting down jetstream consumer NATS connection")
 		c.nc.Close()
 	}
-
-	return ctxErr
 }
 
 // workerLoop pulls deliveries from the channel and processes them until
