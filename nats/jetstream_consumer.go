@@ -203,16 +203,17 @@ func (c *JetStreamConsumer[I]) Ready() <-chan struct{} {
 	return c.ready
 }
 
+const shutdownFlushDelay = 100 * time.Millisecond
+
 // Run starts the JetStream Consume loop, dispatching messages to a worker
 // pool, and blocks until ctx is cancelled or a fatal processor error
 // triggers JSErrorActionStop.
-//
 // Returns nil on graceful shutdown; returns a wrapped error when the
 // processor signals JSErrorActionStop.
 //
 // Implements lifecycle.Runner.
 //
-//nolint:funlen // single-method lifecycle coordinator: split would obscure ordering.
+//nolint:funlen,cyclop // single-method lifecycle coordinator: split would obscure ordering.
 func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -280,11 +281,14 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	// Flush the connection to ensure the subscription has been registered
 	// and processed by the NATS server before we signal readiness.
 	flushCtx := ctx
+
 	if _, ok := flushCtx.Deadline(); !ok {
 		var cancelFunc context.CancelFunc
+
 		flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
 		defer cancelFunc()
 	}
+
 	if err := c.nc.FlushWithContext(flushCtx); err != nil {
 		c.logger.ErrorContext(ctx, "flush subscription failed", slog.Any("err", err))
 	}
@@ -294,7 +298,9 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 	// Build the per-message Process function ONCE per Run cycle. With OTel
 	// enabled the wrapper closes over a tracer + the user's Process method
 	// value, so creating it per-message would allocate on every delivery.
+
 	process := c.processor.Process
+
 	if c.otelEnabled {
 		process = instrumentProcessJS(c.processor.Process)
 	}
@@ -334,11 +340,14 @@ func (c *JetStreamConsumer[I]) Run(ctx context.Context) error {
 
 	// Flush any outstanding Nak/Ack messages sent by workers or drainBuffered
 	// before exiting Run.
-	flushCtx2 := context.Background()
+	flushCtx2 := context.WithoutCancel(ctx)
+
 	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
 		var cancel2 context.CancelFunc
+
 		flushCtx2, cancel2 = context.WithTimeout(flushCtx2, defaultFlushTimeout)
 		defer cancel2()
+
 		_ = c.nc.FlushWithContext(flushCtx2)
 	}
 
@@ -367,6 +376,8 @@ func (c *JetStreamConsumer[I]) drainBuffered(deliveries <-chan jetstream.Msg) {
 // closed so the resource does not leak.
 //
 // Implements lifecycle.Resource. Idempotent.
+//
+//nolint:cyclop // shutdown logic includes safety flushes and fallback contexts
 func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
 	c.mu.Lock()
 	cancel := c.cancelFn
@@ -387,8 +398,10 @@ func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
 
 	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
 		flushCtx := ctx
+
 		if _, ok := flushCtx.Deadline(); !ok {
 			var cancelFunc context.CancelFunc
+
 			flushCtx, cancelFunc = context.WithTimeout(ctx, defaultFlushTimeout)
 			defer cancelFunc()
 		}
@@ -400,7 +413,7 @@ func (c *JetStreamConsumer[I]) Shutdown(ctx context.Context) error {
 			// before we tear down the connection.
 			select {
 			case <-ctx.Done():
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(shutdownFlushDelay):
 			}
 		}
 	}
