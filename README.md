@@ -108,7 +108,7 @@ Phase C: SIGTERM → Runners shutdown LIFO (frontends first), then Resources LIF
 | [`grpc`](./grpc/README.md) | Runner | gRPC server with interceptors and stats handlers | [docs](./grpc/README.md) |
 | [`otel`](./otel/README.md) | Resource | OpenTelemetry SDK bootstrap (OTLP/HTTP) | [docs](./otel/README.md) |
 | [`sql`](./sql/README.md) | Resource | sqlx wrapper with pool tuning, transactions, OTel | [docs](./sql/README.md) |
-| [`sql/postgres`](./sql/postgres/README.md) | Helper | PostgreSQL DSN builder | [docs](./sql/postgres/README.md) |
+| [`sql/pgx`](./sql/pgx/README.md) | Helper | PostgreSQL DSN builder (pgx stdlib driver) | [docs](./sql/pgx/README.md) |
 | [`redis`](./redis/README.md) | Resource | go-redis wrapper with OTel | [docs](./redis/README.md) |
 | [`kafka`](./kafka/README.md) | Runner+Resource | franz-go wrapper. Producer is Resource, Consumer is Runner | [docs](./kafka/README.md) |
 | [`rabbitmq`](./rabbitmq/README.md) | Runner+Resource | AMQP wrapper. Publisher is Resource, ConsumerHost is Runner | [docs](./rabbitmq/README.md) |

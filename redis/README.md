@@ -70,6 +70,14 @@ redis.Config{
 - `WithPoolSize(n int)` — connection pool size. Default: go-redis chooses `10*runtime.NumCPU()`.
 - `WithReadTimeout(time.Duration)` — per-command read timeout. Default: 3s (go-redis).
 - `WithWriteTimeout(time.Duration)` — per-command write timeout. Default: same as ReadTimeout.
+- `WithMaxRetries(n int)` — command retries on transient network errors. Default: 3 (go-redis); `-1` disables.
+- `WithMinRetryBackoff(time.Duration)` — min backoff between command retries. Default: 8ms (go-redis).
+- `WithMaxRetryBackoff(time.Duration)` — max backoff between command retries. Default: 512ms (go-redis).
+- `WithDialTimeout(time.Duration)` — timeout for establishing new connections. Default: 5s (go-redis).
+- `WithPoolTimeout(time.Duration)` — wait for a free pooled connection before timing out. Default: ReadTimeout + 1s.
+- `WithConnMaxIdleTime(time.Duration)` — close connections idle longer than this. Default: 30m (go-redis).
+- `WithConnMaxLifetime(time.Duration)` — max connection age before rotation. Default: unlimited. Set a finite value behind a load balancer / failover.
+- `WithConnectRetry(attempts int, backoff time.Duration)` — retry the initial connection Ping (coarse, context-aware) to absorb a Redis that comes up a few seconds after boot. Distinct from `WithMaxRetries` (millisecond command retries). Default: no retry.
 - `WithOtel()` — instrument every command with OpenTelemetry traces and metrics via redisotel.
 
 ## Observability (`WithOtel`)

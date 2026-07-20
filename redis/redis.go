@@ -27,6 +27,7 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/sergeyslonimsky/core/internal/retry"
 	"github.com/sergeyslonimsky/core/lifecycle"
 )
 
@@ -46,11 +47,20 @@ type Client struct {
 type Option func(*options)
 
 type options struct {
-	logger       *slog.Logger
-	poolSize     int
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	otelEnabled  bool
+	logger          *slog.Logger
+	poolSize        int
+	readTimeout     time.Duration
+	writeTimeout    time.Duration
+	maxRetries      int
+	minRetryBackoff time.Duration
+	maxRetryBackoff time.Duration
+	dialTimeout     time.Duration
+	poolTimeout     time.Duration
+	connMaxIdleTime time.Duration
+	connMaxLifetime time.Duration
+	connectAttempts int
+	connectBackoff  time.Duration
+	otelEnabled     bool
 }
 
 // WithLogger attaches a *slog.Logger used for lifecycle events. Defaults to
@@ -77,6 +87,66 @@ func WithWriteTimeout(d time.Duration) Option {
 	return func(o *options) { o.writeTimeout = d }
 }
 
+// WithMaxRetries sets how many times go-redis retries a command that fails
+// with a transient network error, before giving up. Default: go-redis uses 3.
+// Pass -1 to disable retries entirely. These are millisecond-scale command
+// retries (see WithMinRetryBackoff / WithMaxRetryBackoff) — for smoothing a
+// dependency that is slow to come up at boot, use WithConnectRetry instead.
+func WithMaxRetries(n int) Option {
+	return func(o *options) { o.maxRetries = n }
+}
+
+// WithMinRetryBackoff sets the minimum backoff between command retries.
+// Default: go-redis uses 8ms. Zero leaves the go-redis default.
+func WithMinRetryBackoff(d time.Duration) Option {
+	return func(o *options) { o.minRetryBackoff = d }
+}
+
+// WithMaxRetryBackoff sets the maximum backoff between command retries.
+// Default: go-redis uses 512ms. Zero leaves the go-redis default.
+func WithMaxRetryBackoff(d time.Duration) Option {
+	return func(o *options) { o.maxRetryBackoff = d }
+}
+
+// WithDialTimeout sets the timeout for establishing new connections. Default:
+// go-redis uses 5s. Zero leaves the go-redis default.
+func WithDialTimeout(d time.Duration) Option {
+	return func(o *options) { o.dialTimeout = d }
+}
+
+// WithPoolTimeout sets how long a caller waits for a free connection from the
+// pool before timing out. Default: go-redis uses ReadTimeout + 1s. Zero leaves
+// the go-redis default.
+func WithPoolTimeout(d time.Duration) Option {
+	return func(o *options) { o.poolTimeout = d }
+}
+
+// WithConnMaxIdleTime sets the maximum time a connection may sit idle before
+// it is closed. Default: go-redis uses 30m. Zero leaves the go-redis default.
+func WithConnMaxIdleTime(d time.Duration) Option {
+	return func(o *options) { o.connMaxIdleTime = d }
+}
+
+// WithConnMaxLifetime sets the maximum age of a connection before it is
+// closed and replaced. Default: go-redis keeps connections forever. Use a
+// finite value to encourage healthy rotation behind a load balancer / failover.
+func WithConnMaxLifetime(d time.Duration) Option {
+	return func(o *options) { o.connMaxLifetime = d }
+}
+
+// WithConnectRetry retries the initial connection Ping up to attempts times
+// (fixed backoff, context-aware) before New returns an error. Unlike the
+// millisecond-scale command retries (WithMaxRetries), this is coarse and meant
+// to absorb a dependency that starts a few seconds after the pod boots, so the
+// process comes up cleanly instead of relying on a container restart loop.
+// Default: no retry (a single Ping).
+func WithConnectRetry(attempts int, backoff time.Duration) Option {
+	return func(o *options) {
+		o.connectAttempts = attempts
+		o.connectBackoff = backoff
+	}
+}
+
 // WithOtel enables OpenTelemetry tracing and metrics on every Redis command
 // via go-redis's redisotel extension. Uses the global tracer and meter
 // providers, so otel.Setup must run and be registered with app.App before
@@ -100,12 +170,19 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 	}
 
 	rOpts := &redis.Options{ //nolint:exhaustruct
-		Addr:         cfg.addr(),
-		Password:     cfg.Password,
-		DB:           cfg.DB,
-		PoolSize:     o.poolSize,
-		ReadTimeout:  o.readTimeout,
-		WriteTimeout: o.writeTimeout,
+		Addr:            cfg.addr(),
+		Password:        cfg.Password,
+		DB:              cfg.DB,
+		PoolSize:        o.poolSize,
+		ReadTimeout:     o.readTimeout,
+		WriteTimeout:    o.writeTimeout,
+		MaxRetries:      o.maxRetries,
+		MinRetryBackoff: o.minRetryBackoff,
+		MaxRetryBackoff: o.maxRetryBackoff,
+		DialTimeout:     o.dialTimeout,
+		PoolTimeout:     o.poolTimeout,
+		ConnMaxIdleTime: o.connMaxIdleTime,
+		ConnMaxLifetime: o.connMaxLifetime,
 	}
 
 	rc := redis.NewClient(rOpts)
@@ -120,11 +197,14 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		}
 	}
 
-	if err := rc.Ping(ctx).Err(); err != nil {
+	pingErr := retry.Do(ctx, o.connectAttempts, o.connectBackoff, func(ctx context.Context) error {
+		return rc.Ping(ctx).Err()
+	})
+	if pingErr != nil {
 		// Best-effort close on failed startup — don't leak the pool.
 		_ = rc.Close()
 
-		return nil, fmt.Errorf("ping redis at %s: %w", cfg.addr(), err)
+		return nil, fmt.Errorf("ping redis at %s: %w", cfg.addr(), pingErr)
 	}
 
 	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
