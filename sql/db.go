@@ -34,6 +34,7 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
+	"github.com/sergeyslonimsky/core/internal/retry"
 	"github.com/sergeyslonimsky/core/lifecycle"
 )
 
@@ -74,6 +75,8 @@ type options struct {
 	maxIdleConns    int
 	connMaxLifetime time.Duration
 	connMaxIdleTime time.Duration
+	connectAttempts int
+	connectBackoff  time.Duration
 }
 
 // WithLogger attaches a *slog.Logger used for lifecycle events. Defaults to
@@ -120,6 +123,19 @@ func WithConnMaxIdleTime(d time.Duration) Option {
 	return func(o *options) { o.connMaxIdleTime = d }
 }
 
+// WithConnectRetry retries the initial connect+ping up to attempts times
+// (fixed backoff, context-aware) before New returns an error. It absorbs a
+// database that starts a few seconds after the pod boots, so the process comes
+// up cleanly instead of relying on a container restart loop. The database/sql
+// pool reconnects on its own at runtime; this only covers the initial connect.
+// Default: no retry (a single attempt).
+func WithConnectRetry(attempts int, backoff time.Duration) Option {
+	return func(o *options) {
+		o.connectAttempts = attempts
+		o.connectBackoff = backoff
+	}
+}
+
 // New connects to the database, applies pool tuning options, optionally
 // installs OpenTelemetry instrumentation, and verifies the connection.
 //
@@ -134,22 +150,24 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*DB, error) {
 		apply(o)
 	}
 
-	var (
-		sqlxDB *sqlx.DB
-		err    error
-	)
+	var sqlxDB *sqlx.DB
 
-	if o.otelEnabled {
-		sqlxDB, err = otelsqlx.ConnectContext(
-			ctx,
-			cfg.DriverName,
-			cfg.DataSource,
-			otelsql.WithAttributes(semconv.DBSystemKey.String(cfg.DriverName)),
-		)
-	} else {
-		sqlxDB, err = sqlx.ConnectContext(ctx, cfg.DriverName, cfg.DataSource)
-	}
+	err := retry.Do(ctx, o.connectAttempts, o.connectBackoff, func(ctx context.Context) error {
+		var connErr error
 
+		if o.otelEnabled {
+			sqlxDB, connErr = otelsqlx.ConnectContext(
+				ctx,
+				cfg.DriverName,
+				cfg.DataSource,
+				otelsql.WithAttributes(semconv.DBSystemKey.String(cfg.DriverName)),
+			)
+		} else {
+			sqlxDB, connErr = sqlx.ConnectContext(ctx, cfg.DriverName, cfg.DataSource)
+		}
+
+		return connErr //nolint:wrapcheck // wrapped as "connect database" by the caller below
+	})
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}

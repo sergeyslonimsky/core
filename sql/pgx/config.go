@@ -3,11 +3,10 @@
 //
 // Importing this package registers github.com/jackc/pgx/v5/stdlib via blank
 // import under the database/sql driver name "pgx", so consuming code does not
-// need a separate driver import. It is a drop-in alternative to
-// core/sql/postgres (lib/pq) for consumers that need pgx — e.g. richer Postgres
-// type support, or libraries that assume pgx (such as River's database/sql
-// driver). Pick a driver by importing exactly one of these subpackages; this
-// package never imports core/sql/postgres, so it does not pull in lib/pq.
+// need a separate driver import. pgx is the standard PostgreSQL driver for
+// core consumers — chosen for richer Postgres type support (NUMERIC, arrays),
+// proper context-cancellation of in-flight queries, and libraries that assume
+// pgx (such as River's database/sql driver).
 package pgx
 
 import (
@@ -18,8 +17,7 @@ import (
 
 // Config describes a PostgreSQL connection. Plain fields, no struct tags —
 // consumer apps map their viper keys to fields explicitly inside their own
-// config.NewConfig(). Field-compatible with core/sql/postgres.Config so
-// switching drivers is a one-line import/type change.
+// config.NewConfig().
 type Config struct {
 	Host     string
 	Port     string
@@ -33,8 +31,7 @@ type Config struct {
 }
 
 // DSN returns a libpq-format connection string. The pgx stdlib driver parses
-// this keyword/value form, so the DSN is identical to core/sql/postgres. Use as
-// the DataSource for sql.Config:
+// this keyword/value form. Use as the DataSource for sql.Config:
 //
 //	pgCfg := pgx.Config{...}
 //	db, err := sql.New(ctx, sql.Config{

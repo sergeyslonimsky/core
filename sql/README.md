@@ -4,7 +4,7 @@ Wrapper around `github.com/jmoiron/sqlx` with the lifecycle contract: typed `Con
 
 ## When to use
 
-Any service that needs an SQL database. Currently `sql/postgres` is the only provided driver helper, but `sql.Config{DriverName, DataSource}` works with any database/sql-compatible driver — bring your own.
+Any service that needs an SQL database. `sql/pgx` is the provided PostgreSQL driver helper (pgx stdlib), but `sql.Config{DriverName, DataSource}` works with any database/sql-compatible driver — bring your own.
 
 ## Quickstart
 
@@ -17,13 +17,13 @@ import (
 
     "github.com/sergeyslonimsky/core/app"
     "github.com/sergeyslonimsky/core/sql"
-    "github.com/sergeyslonimsky/core/sql/postgres"
+    "github.com/sergeyslonimsky/core/sql/pgx"
 )
 
 func main() {
     ctx := context.Background()
 
-    pgCfg := postgres.Config{
+    pgCfg := pgx.Config{
         Host: "localhost", Port: "5432",
         User: "app", Password: "secret", Name: "myapp",
     }
@@ -49,20 +49,20 @@ func main() {
 
 ```go
 type Config struct {
-    DriverName string  // e.g., "postgres"
+    DriverName string  // e.g., "pgx"
     DataSource string  // driver-specific DSN
 }
 ```
 
-For PostgreSQL, use the `postgres` subpackage:
+For PostgreSQL, use the `pgx` subpackage (registers the pgx stdlib driver):
 
 ```go
-type postgres.Config struct {
+type pgx.Config struct {
     Host, Port, User, Password, Name, SSLMode string
 }
 
-func (c Config) DSN() string     // libpq-format connection string
-func (c Config) Driver() string  // "postgres"
+func (c Config) DSN() string     // libpq-format connection string (pgx stdlib parses it)
+func (c Config) Driver() string  // "pgx"
 ```
 
 ## Options
@@ -73,6 +73,7 @@ func (c Config) Driver() string  // "postgres"
 - `WithMaxIdleConns(n int)` — pool's max idle connections (default: 2).
 - `WithConnMaxLifetime(d time.Duration)` — recycle connections after this age.
 - `WithConnMaxIdleTime(d time.Duration)` — close connections idle for this long.
+- `WithConnectRetry(attempts int, backoff time.Duration)` — retry the initial connect+ping up to `attempts` times (fixed `backoff`, context-aware) before returning an error. Smooths a dependency that is not yet reachable at boot. Default: no retry (single attempt).
 
 ## Observability (`WithOtel`)
 
