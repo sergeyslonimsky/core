@@ -39,6 +39,12 @@ type Manager interface {
 
 	// GetQuerier returns the active transaction's Querier if ctx was
 	// produced by WithTx; otherwise returns the manager's underlying *DB.
+	//
+	// The two cases have different concurrency characteristics: *DB is safe
+	// and parallel-friendly across goroutines, but a Tx (see Tx docs) is
+	// not — queries against it serialize on one connection. Don't fan
+	// GetQuerier(ctx) calls out to multiple goroutines inside a WithTx
+	// callback expecting a speedup.
 	GetQuerier(ctx context.Context) Querier
 
 	// HasTx reports whether ctx already carries a WithTx-controlled
