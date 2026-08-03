@@ -8,6 +8,17 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Tx is a single database/sql transaction, bound to one underlying
+// connection.
+//
+// Not safe for concurrent use by multiple goroutines: unlike *DB, calls on
+// the same Tx serialize on that connection's internal lock rather than
+// running in parallel or racing. Fanning out concurrent queries against the
+// Querier returned by Manager.GetQuerier(ctx) inside a WithTx callback (e.g.
+// goroutines started with go func()) will not speed anything up and can
+// produce confusing timeout/ordering behavior — issue concurrent queries
+// against *DB outside a transaction instead, or run them sequentially on the
+// Tx.
 type Tx interface {
 	Querier
 	Commit() error
