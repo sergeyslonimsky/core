@@ -90,6 +90,18 @@ a.Add(redis)         // closed before db
 a.Add(httpServer)    // registered last → closed first → stops accepting traffic first
 ```
 
+## Group
+
+`Group(resources ...Resource) Resource` aggregates an arbitrary subset of resources into a single shutdown unit, joining errors with `errors.Join`. Nil entries — including a typed nil pointer stored in the `Resource` interface (e.g. an unset struct field) — are silently skipped, so struct fields can be passed directly without a hand-written nil guard per field:
+
+```go
+func (i *Infrastructure) Shutdown(ctx context.Context) error {
+    return lifecycle.Group(i.Redis, i.DB, i.OTel).Shutdown(ctx)
+}
+```
+
+This is for aggregating a subset into a rollback/teardown helper (e.g. a DI construction-failure rollback path) — it does not replace `app.App`'s LIFO-ordered normal shutdown sequence.
+
 ## Testing
 
 Components that implement these interfaces should add a compile-time assertion in the same package:
