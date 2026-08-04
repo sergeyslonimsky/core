@@ -7,11 +7,13 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/sergeyslonimsky/core/http2"
 	"github.com/sergeyslonimsky/core/lifecycle"
@@ -406,6 +408,41 @@ func TestServer_Middleware_OrderOutermostFirst(t *testing.T) {
 
 	// A is outermost: enter A, enter B, handler, exit B, exit A.
 	assert.Equal(t, "A>B>handler<B<A", order.String())
+}
+
+// TestServer_WithOtel_ForwardsOptions locks in that otelhttp.Option values
+// passed to WithOtel actually reach otelhttp.NewHandler. otelhttp calls
+// SpanNameFormatter to compute the span name on every request regardless of
+// whether the TracerProvider is a real one or the global noop default, so
+// this doesn't require otel.Setup to have run.
+func TestServer_WithOtel_ForwardsOptions(t *testing.T) {
+	t.Parallel()
+
+	l, base := helperListener(t)
+
+	var formatterCalled atomic.Bool
+
+	srv := http2.NewServer(http2.Config{},
+		http2.WithListener(l),
+		http2.WithOtel(otelhttp.WithSpanNameFormatter(func(operation string, _ *http.Request) string {
+			formatterCalled.Store(true)
+
+			return operation
+		})),
+	)
+	srv.Mount("/t", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cancel, errCh := runServer(t, srv)
+
+	defer func() { cancel(); <-errCh }()
+
+	resp := doGet(context.Background(), t, base+"/t")
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, formatterCalled.Load(), "otelhttp.Option passed to WithOtel must reach otelhttp.NewHandler")
 }
 
 // Compile-time assertions.
