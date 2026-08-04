@@ -47,18 +47,23 @@ func (g group) Shutdown(ctx context.Context) error {
 }
 
 // isNilResource reports whether r is nil, accounting for the classic Go
-// gotcha where a nil concrete pointer (e.g. (*redis.Client)(nil)) stored in
-// an interface value compares != nil to the untyped nil. Every Resource
-// implementation in core/* uses a pointer receiver, so checking
-// reflect.Pointer covers the cases that matter in practice.
+// gotcha where a nil concrete value (most commonly a nil pointer, e.g.
+// (*redis.Client)(nil)) stored in an interface value compares != nil to the
+// untyped nil. Covers every kind reflect.IsNil accepts so a nested
+// Group() — itself a Resource backed by a slice, not a pointer — is also
+// recognized correctly rather than relying on it happening to no-op safely
+// on a nil slice receiver.
 func isNilResource(r Resource) bool {
 	if r == nil {
 		return true
 	}
 
-	v := reflect.ValueOf(r)
-
-	return v.Kind() == reflect.Pointer && v.IsNil()
+	switch v := reflect.ValueOf(r); v.Kind() { //nolint:exhaustive // only kinds that can be nil are relevant
+	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Compile-time check.
