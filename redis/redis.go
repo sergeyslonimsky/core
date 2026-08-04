@@ -31,6 +31,13 @@ import (
 	"github.com/sergeyslonimsky/core/lifecycle"
 )
 
+// defaultConnMaxLifetime caps how long a pooled connection is reused before
+// go-redis closes and replaces it. Every known consumer of this package
+// re-derives this exact value independently to get healthy connection
+// rotation behind a load balancer / through Redis failover, so it is the
+// package default rather than something each caller must remember to set.
+const defaultConnMaxLifetime = 30 * time.Minute
+
 // Client is a thin wrapper around *redis.Client that adds lifecycle
 // conformance and cheap convenience methods. For anything beyond Get/Set/Del,
 // call Unwrap to get the underlying *redis.Client.
@@ -128,8 +135,10 @@ func WithConnMaxIdleTime(d time.Duration) Option {
 }
 
 // WithConnMaxLifetime sets the maximum age of a connection before it is
-// closed and replaced. Default: go-redis keeps connections forever. Use a
-// finite value to encourage healthy rotation behind a load balancer / failover.
+// closed and replaced. Default: 30 minutes, to encourage healthy connection
+// rotation behind a load balancer / through Redis failover. Pass 0
+// explicitly to opt back into go-redis's own default of keeping connections
+// forever.
 func WithConnMaxLifetime(d time.Duration) Option {
 	return func(o *options) { o.connMaxLifetime = d }
 }
@@ -164,7 +173,10 @@ func WithOtel() Option {
 // Returns an error if the initial Ping fails — callers should treat this as
 // fatal and not continue startup.
 func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{ //nolint:exhaustruct
+		logger:          slog.Default(),
+		connMaxLifetime: defaultConnMaxLifetime,
+	}
 	for _, apply := range opts {
 		apply(o)
 	}
