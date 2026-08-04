@@ -615,11 +615,31 @@ func TestJetStreamConsumer_shutdownNaksBufferedDeliveries(t *testing.T) {
 	require.NoError(t, <-d1)
 
 	// Second consumer on the same durable: every NAK'd message must be
-	// redelivered within a short window. Without NAK, we would wait
-	// AckWait (30s) — the test would time out.
-	redelivered := make(chan struct{}, totalMessages)
+	// redelivered promptly. Without NAK, we would wait AckWait (30s) — the
+	// test would time out.
+	//
+	// jetstream.Msg.Nak() is fire-and-forget (Publish, not Request) — there
+	// is no synchronous Nak in the public API (unlike Ack's DoubleAck), so
+	// nothing on the client side can wait for the server to finish
+	// processing all 5 NAKs. Once it has, redelivery to an already-pulling
+	// consumer is sub-millisecond (verified empirically) — the flakiness
+	// here was never about redelivery being slow, it was a race between
+	// cons2's own startup (dial + JetStream init + first pull request) and
+	// the server finishing that NAK processing. Under normal timing cons2's
+	// first Fetch already finds every message available; under CI
+	// contention it can occasionally lose that race for one or two of the
+	// five, and nats.go's pull consumer then waits out its own internal
+	// retry interval before asking again — which a single shared 5s
+	// deadline across all 5 messages doesn't reliably absorb.
+	//
+	// Fix: use the same atomic-counter + require.Eventually pattern already
+	// used above for firstProcessed, with a generous absolute ceiling. This
+	// tolerates arbitrary startup/retry jitter while still failing hard
+	// (and reasonably fast) if NAK-on-shutdown is genuinely broken.
+	var redeliveredCount atomic.Int32
+
 	secondProc := processorFn[string](func(_ context.Context, _ Message[string]) error {
-		redelivered <- struct{}{}
+		redeliveredCount.Add(1)
 
 		return nil
 	})
@@ -643,16 +663,9 @@ func TestJetStreamConsumer_shutdownNaksBufferedDeliveries(t *testing.T) {
 
 	<-cons2.Ready()
 
-	deadline := time.After(5 * time.Second)
-
-	for i := range totalMessages {
-		select {
-		case <-redelivered:
-		case <-deadline:
-			t.Fatalf("only %d/%d messages redelivered within 5s — NAK on shutdown not working",
-				i, totalMessages)
-		}
-	}
+	require.Eventually(t, func() bool { return redeliveredCount.Load() == totalMessages },
+		15*time.Second, 10*time.Millisecond,
+		"not all messages redelivered — NAK on shutdown not working")
 
 	cancelRun2()
 	require.NoError(t, cons2.Shutdown(t.Context()))
