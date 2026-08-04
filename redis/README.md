@@ -76,7 +76,7 @@ redis.Config{
 - `WithDialTimeout(time.Duration)` — timeout for establishing new connections. Default: 5s (go-redis).
 - `WithPoolTimeout(time.Duration)` — wait for a free pooled connection before timing out. Default: ReadTimeout + 1s.
 - `WithConnMaxIdleTime(time.Duration)` — close connections idle longer than this. Default: 30m (go-redis).
-- `WithConnMaxLifetime(time.Duration)` — max connection age before rotation. Default: unlimited. Set a finite value behind a load balancer / failover.
+- `WithConnMaxLifetime(time.Duration)` — max connection age before rotation. Default: 30 minutes, for healthy rotation behind a load balancer / failover. Pass `0` explicitly to opt back into go-redis's unlimited default.
 - `WithConnectRetry(attempts int, backoff time.Duration)` — retry the initial connection Ping (coarse, context-aware) to absorb a Redis that comes up a few seconds after boot. Distinct from `WithMaxRetries` (millisecond command retries). Default: no retry.
 - `WithOtel()` — instrument every command with OpenTelemetry traces and metrics via redisotel.
 
