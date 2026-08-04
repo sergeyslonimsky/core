@@ -109,6 +109,17 @@ Repositories should always call `manager.GetQuerier(ctx)` — outside `WithTx` i
 
 Panic safety: if the callback panics, `WithTx` rolls the transaction back before the panic re-propagates. Callers don't need a manual `defer recover`.
 
+To request a non-default isolation level or a read-only transaction, use `WithTxOptions` instead — `WithTx` is equivalent to `WithTxOptions(ctx, nil, callback)`:
+
+```go
+err := manager.WithTxOptions(ctx, &sql.TxOptions{
+    Isolation: sql.LevelSerializable,
+    ReadOnly:  true,
+}, func(txCtx context.Context) error {
+    return reportRepo.Read(txCtx)
+})
+```
+
 ## Generic executors
 
 ```go

@@ -90,6 +90,28 @@ func TestManagerWithTx(t *testing.T) {
 	}
 }
 
+func TestManagerWithTxOptions(t *testing.T) {
+	t.Parallel()
+
+	manager, sqlMock := setupTestDB(t)
+
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit()
+	sqlMock.ExpectClose()
+
+	ctx := t.Context()
+
+	opts := &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}
+
+	err := manager.WithTxOptions(ctx, opts, func(tCtx context.Context) error {
+		_, ok := manager.GetQuerier(tCtx).(csql.Tx)
+		assert.True(t, ok)
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 func TestManagerQuerier(t *testing.T) {
 	t.Parallel()
 

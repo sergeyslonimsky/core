@@ -30,12 +30,20 @@ type Querier interface {
 // returned Querier is either the active transaction (if WithTx wrapped
 // the call chain) or the underlying *DB.
 type Manager interface {
-	// WithTx runs callback inside a single transaction. The callback's ctx
-	// carries the transaction; subsequent GetQuerier(ctx) calls return the
+	// WithTx runs callback inside a single transaction, using the driver's
+	// default isolation level and a read-write transaction. Equivalent to
+	// WithTxOptions(ctx, nil, callback) — see WithTxOptions for the full
+	// contract.
+	WithTx(ctx context.Context, callback func(context.Context) error) error
+
+	// WithTxOptions runs callback inside a single transaction opened with
+	// opts (isolation level, read-only). Pass nil for opts to use the
+	// driver's default, equivalent to WithTx. The callback's ctx carries
+	// the transaction; subsequent GetQuerier(ctx) calls return the
 	// transaction's Querier. On error, the transaction is rolled back and
 	// the callback's error is returned. On success, the transaction is
 	// committed.
-	WithTx(ctx context.Context, callback func(context.Context) error) error
+	WithTxOptions(ctx context.Context, opts *stdsql.TxOptions, callback func(context.Context) error) error
 
 	// GetQuerier returns the active transaction's Querier if ctx was
 	// produced by WithTx; otherwise returns the manager's underlying *DB.
@@ -83,12 +91,19 @@ func (m *DBManager) HasTx(ctx context.Context) bool {
 }
 
 // WithTx — see Manager.WithTx.
+func (m *DBManager) WithTx(ctx context.Context, callback func(context.Context) error) error {
+	return m.WithTxOptions(ctx, nil, callback)
+}
+
+// WithTxOptions — see Manager.WithTxOptions.
 //
 // Panic safety: if callback panics, the transaction is rolled back before
 // the panic propagates. This prevents leaked transactions that would
 // otherwise linger until the database's server-side idle timeout.
-func (m *DBManager) WithTx(ctx context.Context, callback func(context.Context) error) error {
-	tx, err := m.db.BeginTx(ctx, nil)
+func (m *DBManager) WithTxOptions(
+	ctx context.Context, opts *stdsql.TxOptions, callback func(context.Context) error,
+) error {
+	tx, err := m.db.BeginTx(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
