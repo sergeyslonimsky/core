@@ -3,6 +3,7 @@ package sql_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -88,6 +89,86 @@ func TestManagerWithTx(t *testing.T) {
 			assert.False(t, ok)
 		})
 	}
+}
+
+func TestManagerWithTxOptions(t *testing.T) {
+	t.Parallel()
+
+	manager, sqlMock := setupTestDB(t)
+
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit()
+	sqlMock.ExpectClose()
+
+	ctx := t.Context()
+
+	opts := &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}
+
+	err := manager.WithTxOptions(ctx, opts, func(tCtx context.Context) error {
+		_, ok := manager.GetQuerier(tCtx).(csql.Tx)
+		assert.True(t, ok)
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestManagerWithTxOptions_BeginError(t *testing.T) {
+	t.Parallel()
+
+	manager, sqlMock := setupTestDB(t)
+
+	beginErr := errors.New("connection refused")
+	sqlMock.ExpectBegin().WillReturnError(beginErr)
+	sqlMock.ExpectClose()
+
+	err := manager.WithTxOptions(t.Context(), nil, func(context.Context) error {
+		t.Fatal("callback must not run when BeginTx fails")
+
+		return nil
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, beginErr)
+}
+
+func TestManagerWithTxOptions_CommitError(t *testing.T) {
+	t.Parallel()
+
+	manager, sqlMock := setupTestDB(t)
+
+	commitErr := errors.New("connection reset")
+
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit().WillReturnError(commitErr)
+	sqlMock.ExpectClose()
+
+	err := manager.WithTxOptions(t.Context(), nil, func(context.Context) error {
+		return nil
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, commitErr)
+}
+
+// TestManagerWithTxOptions_PanicRecovery locks in the "Panic safety"
+// guarantee documented on WithTxOptions: a panicking callback still rolls
+// back the transaction (proven by the ExpectRollback mock expectation
+// below being satisfied) before the panic re-propagates to the caller.
+func TestManagerWithTxOptions_PanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	manager, sqlMock := setupTestDB(t)
+
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectRollback()
+	sqlMock.ExpectClose()
+
+	assert.PanicsWithValue(t, "boom", func() {
+		_ = manager.WithTxOptions(t.Context(), nil, func(context.Context) error {
+			panic("boom")
+		})
+	})
 }
 
 func TestManagerQuerier(t *testing.T) {
