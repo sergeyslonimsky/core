@@ -130,21 +130,24 @@ See `server_test.go` for the full test suite covering routes, middleware order, 
 
 ## Outbound client (`NewClient`)
 
-Symmetric to `NewServer` for the outbound direction — a tuned `*http.Client` for service-to-service calls, wrapped in `otelhttp.NewTransport` by default:
+Symmetric to `NewServer` for the outbound direction — a tuned `*http.Client` for service-to-service and third-party API calls:
 
 ```go
-client, err := http2.NewClient(
+client := http2.NewClient(
     http2.WithResponseHeaderTimeout(30 * time.Second), // slow upstream TTFB
+    http2.WithClientOtel(),
+    http2.WithRoundTripper(func(next http.RoundTripper) http.RoundTripper {
+        return authTransport{next: next, apiKey: cfg.APIKey} // injects a header, then delegates
+    }),
 )
-if err != nil {
-    log.Fatal(err)
-}
 ```
 
-- Clones `http.DefaultTransport` and tunes pool/timeout fields: `WithMaxIdleConns`, `WithMaxIdleConnsPerHost`, `WithDialTimeout`, `WithKeepAlive`, `WithTLSHandshakeTimeout`, `WithResponseHeaderTimeout`, `WithIdleConnTimeout`.
-- otelhttp instrumentation is on by default; pass `WithoutOtel()` to disable it, or `WithClientOtelOptions(otelhttp.WithMetricAttributesFn(...))` to trim cardinality.
+- Builds a fresh `*http.Transport` (not a clone of `http.DefaultTransport`) and tunes pool/timeout fields: `WithMaxIdleConns`, `WithMaxIdleConnsPerHost`, `WithDialTimeout`, `WithKeepAlive`, `WithTLSHandshakeTimeout`, `WithResponseHeaderTimeout`, `WithIdleConnTimeout`. `Proxy: http.ProxyFromEnvironment` and `ForceAttemptHTTP2: true` are always set — the latter is required because a custom `DialContext`/`TLSClientConfig` otherwise makes `net/http` skip its automatic HTTP/2 upgrade.
+- `WithTLSConfig(*tls.Config)` — mTLS client certs, a custom root CA pool, or (non-prod only) `InsecureSkipVerify`.
+- `WithTransportOptions(func(*http.Transport))` — escape hatch for `*http.Transport` fields with no dedicated option (`MaxConnsPerHost`, `DisableCompression`, ...), applied after every named option.
+- `WithRoundTripper(func(http.RoundTripper) http.RoundTripper)` — layer cross-cutting concerns above the transport: auth headers, API keys, HMAC signing, custom retries. First-passed wrapper is outermost (sees the request first), mirroring `WithMiddleware`'s ordering on the server side.
+- `WithClientOtel(opts ...otelhttp.Option)` — opt-in otelhttp instrumentation, matching every other `core/*` package's `WithOtel` convention (disabled unless passed). Named `WithClientOtel` rather than `WithOtel` only because both `Option` types live in this package and Go doesn't allow overloading. Always innermost in the RoundTripper chain, so a span covers only the actual network round trip, not time spent in `WithRoundTripper` wrappers. Pass `otelhttp.WithMetricAttributesFn(...)` to trim cardinality.
 - `http.Client.Timeout` is intentionally left unset — bound calls with `context.WithTimeout`/`WithDeadline`, not a client-wide wall clock.
-- Returns `ErrInvalidTransport` if `http.DefaultTransport` is ever not a `*http.Transport` (not expected on any supported Go runtime, but checked rather than asserted unchecked).
 
 ## See also
 
