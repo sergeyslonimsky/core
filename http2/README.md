@@ -128,6 +128,24 @@ go srv.Run(ctx)
 
 See `server_test.go` for the full test suite covering routes, middleware order, panic recovery, healthchecks, and the shutdown bug regression.
 
+## Outbound client (`NewClient`)
+
+Symmetric to `NewServer` for the outbound direction — a tuned `*http.Client` for service-to-service calls, wrapped in `otelhttp.NewTransport` by default:
+
+```go
+client, err := http2.NewClient(
+    http2.WithResponseHeaderTimeout(30 * time.Second), // slow upstream TTFB
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+- Clones `http.DefaultTransport` and tunes pool/timeout fields: `WithMaxIdleConns`, `WithMaxIdleConnsPerHost`, `WithDialTimeout`, `WithKeepAlive`, `WithTLSHandshakeTimeout`, `WithResponseHeaderTimeout`, `WithIdleConnTimeout`.
+- otelhttp instrumentation is on by default; pass `WithoutOtel()` to disable it, or `WithClientOtelOptions(otelhttp.WithMetricAttributesFn(...))` to trim cardinality.
+- `http.Client.Timeout` is intentionally left unset — bound calls with `context.WithTimeout`/`WithDeadline`, not a client-wide wall clock.
+- Returns `ErrInvalidTransport` if `http.DefaultTransport` is ever not a `*http.Transport` (not expected on any supported Go runtime, but checked rather than asserted unchecked).
+
 ## See also
 
 - [`core/app`](../app/README.md) — register your server here.
