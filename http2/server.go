@@ -98,6 +98,7 @@ type Server struct {
 
 	middlewares    []func(http.Handler) http.Handler
 	otelEnabled    bool
+	otelOpts       []otelhttp.Option
 	recoveryOn     bool
 	healthchecker  lifecycle.Healthchecker
 	extraReadyz    []readyzCheck
@@ -148,8 +149,20 @@ func WithLogger(l *slog.Logger) Option {
 //
 // WithOtel records one span per request with the route pattern matched by
 // the underlying ServeMux, including HTTP method, status code, and latency.
-func WithOtel() Option {
-	return func(s *Server) { s.otelEnabled = true }
+//
+// otelhttp's default instrumentation records http.server.request.duration,
+// http.server.request.body.size, and http.server.response.body.size, each
+// tagged with the full default attribute set (route, method, status_code,
+// network/scheme/server attributes). Combined with explicit histogram
+// bucket boundaries (see core/otel's WithHistogramBuckets), this can
+// produce significant active-series cardinality on quota-limited backends.
+// Pass otelhttp.WithMetricAttributesFn(...) via opts to trim or rename
+// attributes per-server instead of working around it at the collector.
+func WithOtel(opts ...otelhttp.Option) Option {
+	return func(s *Server) {
+		s.otelEnabled = true
+		s.otelOpts = opts
+	}
 }
 
 // WithRecovery installs a panic-recovery middleware that logs the panic
@@ -367,7 +380,7 @@ func (s *Server) buildHandler() http.Handler {
 	}
 
 	if s.otelEnabled {
-		handler = otelhttp.NewHandler(handler, "http-"+s.cfg.Port)
+		handler = otelhttp.NewHandler(handler, "http-"+s.cfg.Port, s.otelOpts...)
 	}
 
 	// Apply user middlewares OUTSIDE the built-in wrappers so they are

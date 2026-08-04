@@ -47,7 +47,13 @@ import (
 	"github.com/sergeyslonimsky/core/lifecycle"
 )
 
-const defaultMetricsSendInterval = 3 * time.Second
+// defaultMetricsSendInterval of 15s matches typical Prometheus/Mimir scrape
+// cadences. Do not lower this without also controlling instrumentation
+// cardinality (see http2.WithOtel's otelhttp.Option passthrough) — active
+// series count scales as cardinality / interval, and a short interval on a
+// high-cardinality instrument set can exceed quota-limited backends (e.g.
+// Grafana Cloud's free-tier Mimir active-series limit).
+const defaultMetricsSendInterval = 15 * time.Second
 
 // defaultHistogramBoundaries is the explicit bucket layout used for histogram
 // instruments. We use explicit buckets (not exponential) so Prometheus's
@@ -114,7 +120,8 @@ type Config struct {
 	EnableTracer bool
 
 	// EnableMetrics turns on the meter provider with an OTLP/HTTP exporter
-	// and a 3s default send interval.
+	// and a 15s default send interval (see WithMetricsSendInterval to
+	// override).
 	EnableMetrics bool
 
 	// EnableLogger turns on the logger provider with an OTLP/HTTP exporter.
@@ -134,8 +141,16 @@ type options struct {
 }
 
 // WithMetricsSendInterval overrides how often metrics are exported.
-// Default: 3 seconds. Smaller values give finer resolution at the cost of
-// more network traffic.
+// Default: 15 seconds, matching typical Prometheus/Mimir scrape cadences.
+//
+// Smaller values give finer resolution but do NOT reduce active series
+// count — every instrument's full label set is re-exported on every tick,
+// so a short interval multiplies ingestion volume for a fixed cardinality.
+// On quota-limited backends (e.g. Grafana Cloud's free tier), combining a
+// short interval with high-cardinality instrumentation (see
+// http2.WithOtel) can exceed active-series/ingestion-burst limits and
+// trigger collector OOM/retry loops. Avoid values below ~10s outside local
+// development.
 func WithMetricsSendInterval(d time.Duration) Option {
 	return func(o *options) { o.metricsSendInterval = d }
 }
