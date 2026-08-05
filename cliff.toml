@@ -1,0 +1,55 @@
+# git-cliff configuration — generates GitHub Release notes from Conventional
+# Commits (feat/fix/...) on every `v*` tag push. See .github/workflows/release.yml.
+# Body template follows git-cliff's own default (commit_groups over
+# commit_parsers_groups) rather than a hand-rolled one, since that's the
+# battle-tested path — this only runs at release time, where a template bug
+# would be annoying to catch. Docs: https://git-cliff.org/docs/configuration
+
+[changelog]
+header = ""
+# No "## [version] - date" heading: GitHub's release page already shows the
+# tag and date, so this body is just the grouped commit list.
+#
+# Uses group_by (the actual builtin in git-cliff 2.13.x, verified locally via
+# `git-cliff --init`) rather than commit_groups/commit_parsers_groups, which
+# only exists on git-cliff's unreleased main branch as of this writing —
+# using it here would render fine locally against a newer git-cliff but fail
+# at release time against the pinned action version with
+# "Filter 'commit_groups' not found".
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits -%}
+- {% if commit.scope %}**({{ commit.scope }})** {% endif -%}
+{% if commit.breaking %}[**breaking**] {% endif -%}
+{{ commit.message | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}]\
+(https://github.com/sergeyslonimsky/core/commit/{{ commit.id }}))
+{% endfor %}
+{% endfor %}\
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+# Non-conventional commits (the occasional one that doesn't follow
+# type(scope): subject) are dropped from release notes rather than dumped
+# into a catch-all bucket — require_conventional stays false so they don't
+# fail the release build, just don't show up here.
+filter_unconventional = true
+require_conventional = false
+split_commits = false
+commit_parsers = [
+    { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+    { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+    { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+    { message = "^refactor", group = "<!-- 3 -->🚜 Refactor" },
+    { message = "^doc", group = "<!-- 4 -->📚 Documentation" },
+    { message = "^chore\\(deps.*\\)", group = "<!-- 5 -->📦 Dependencies" },
+    { message = "^chore|^test|^ci|^build|^style", skip = true },
+]
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+topo_order = false
+sort_commits = "oldest"
