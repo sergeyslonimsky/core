@@ -146,8 +146,26 @@ client := http2.NewClient(
 - `WithTLSConfig(*tls.Config)` — mTLS client certs, a custom root CA pool, or (non-prod only) `InsecureSkipVerify`.
 - `WithTransportOptions(func(*http.Transport))` — escape hatch for `*http.Transport` fields with no dedicated option (`MaxConnsPerHost`, `DisableCompression`, ...), applied after every named option.
 - `WithRoundTripper(func(http.RoundTripper) http.RoundTripper)` — layer cross-cutting concerns above the transport: auth headers, API keys, HMAC signing, custom retries. First-passed wrapper is outermost (sees the request first), mirroring `WithMiddleware`'s ordering on the server side.
-- `WithClientOtel(opts ...otelhttp.Option)` — opt-in otelhttp instrumentation, matching every other `core/*` package's `WithOtel` convention (disabled unless passed). Named `WithClientOtel` rather than `WithOtel` only because both `Option` types live in this package and Go doesn't allow overloading. Always innermost in the RoundTripper chain, so a span covers only the actual network round trip, not time spent in `WithRoundTripper` wrappers. Pass `otelhttp.WithMetricAttributesFn(...)` to trim cardinality.
+- `WithInnerRoundTripper(func(http.RoundTripper) http.RoundTripper)` — like `WithRoundTripper`, but placed on the OPPOSITE side of `WithClientOtel`: between the raw `*http.Transport` and `otelhttp.NewTransport`, not above it. Exists for exactly one class of concern: annotating the otelhttp client span from inside its own lifetime. otelhttp creates that span before calling into the RoundTripper chain and, on a transport-level error, ends it synchronously before an outer (`WithRoundTripper`) wrapper regains control — so only an inner wrapper can `RecordError`/`SetAttributes` on that path. See `NewErrorBodyRoundTripper` for the intended consumer. First-passed wrapper is outermost within this inner group (closest to otel, furthest from the wire).
+- `WithClientOtel(opts ...otelhttp.Option)` — opt-in otelhttp instrumentation, matching every other `core/*` package's `WithOtel` convention (disabled unless passed). Named `WithClientOtel` rather than `WithOtel` only because both `Option` types live in this package and Go doesn't allow overloading. Always between the `WithInnerRoundTripper` chain and the `WithRoundTripper` chain, so a span covers only the actual network round trip, not time spent in either wrapper group. Pass `otelhttp.WithMetricAttributesFn(...)` to trim cardinality.
 - `http.Client.Timeout` is intentionally left unset — bound calls with `context.WithTimeout`/`WithDeadline`, not a client-wide wall clock.
+
+### Baseline error visibility (`NewErrorBodyRoundTripper`)
+
+```go
+client := http2.NewClient(
+    http2.WithClientOtel(),
+    http2.WithInnerRoundTripper(http2.NewErrorBodyRoundTripper),
+)
+```
+
+Wraps a client's calls with baseline error visibility on the otelhttp client span, with zero per-call-site code: a `RecordError` event on transport-level failures (dial/TLS/timeout), and a capped (512-byte), UTF-8-sanitized `upstream.response_body_snippet` attribute on HTTP-level errors (status >= 400) — skipped for gzip/compressed or non-text (`Content-Type`) bodies to avoid writing invalid-UTF-8 bytes into an OTLP string attribute, and skipped entirely when the span isn't recording (otel disabled, or the trace wasn't sampled), so the read never happens for nothing.
+
+Deliberately does NOT call `span.SetStatus`: otelhttp's own client semconv already marks any status >= 400 as `codes.Error`, and it does so AFTER this RoundTripper returns control to otelhttp — a `SetStatus` call made here would just have its description blanked by otelhttp's later call. This wrapper's `RecordError`/body-snippet are what carry the actual diagnostic content instead.
+
+Deliberately does NOT attempt domain-level error classification (which upstream, which error class) — it has no notion of "provider" or "model", only raw HTTP. A caller that needs that should keep building its own richer span around the call (e.g. a per-provider chat-completion client); this wrapper is the baseline every call gets for free, not a replacement.
+
+Must be passed to `WithInnerRoundTripper`, not `WithRoundTripper` — see that option's doc comment for why placement matters.
 
 ## See also
 

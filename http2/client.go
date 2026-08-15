@@ -26,18 +26,19 @@ const (
 )
 
 type clientOptions struct {
-	maxIdleConns          int
-	maxIdleConnsPerHost   int
-	dialTimeout           time.Duration
-	keepAlive             time.Duration
-	tlsHandshakeTimeout   time.Duration
-	responseHeaderTimeout time.Duration
-	idleConnTimeout       time.Duration
-	tlsConfig             *tls.Config
-	transportMutators     []func(*http.Transport)
-	otelEnabled           bool
-	otelOpts              []otelhttp.Option
-	roundTripperWrappers  []func(http.RoundTripper) http.RoundTripper
+	maxIdleConns              int
+	maxIdleConnsPerHost       int
+	dialTimeout               time.Duration
+	keepAlive                 time.Duration
+	tlsHandshakeTimeout       time.Duration
+	responseHeaderTimeout     time.Duration
+	idleConnTimeout           time.Duration
+	tlsConfig                 *tls.Config
+	transportMutators         []func(*http.Transport)
+	otelEnabled               bool
+	otelOpts                  []otelhttp.Option
+	roundTripperWrappers      []func(http.RoundTripper) http.RoundTripper
+	innerRoundTripperWrappers []func(http.RoundTripper) http.RoundTripper
 }
 
 // ClientOption configures NewClient.
@@ -126,6 +127,37 @@ func WithRoundTripper(wrap func(http.RoundTripper) http.RoundTripper) ClientOpti
 	return func(o *clientOptions) { o.roundTripperWrappers = append(o.roundTripperWrappers, wrap) }
 }
 
+// WithInnerRoundTripper appends a RoundTripper-wrapping function to the
+// chain, like WithRoundTripper, but placed on the OPPOSITE side of otel
+// instrumentation: between the raw *http.Transport and otelhttp.NewTransport,
+// rather than above it. wrap's "next" is the raw transport (or the next
+// inner wrapper), never the otelhttp.Transport.
+//
+// This exists for exactly one class of concern: annotating the otelhttp
+// client span from inside its own lifetime. otelhttp creates that span
+// before calling into the RoundTripper chain and, on a transport-level
+// error, ends it synchronously before returning control to any
+// WithRoundTripper (outer) wrapper — so an outer wrapper sees an
+// already-ended span on that path, and RecordError/SetAttributes on an ended
+// span are silently dropped by the SDK. A wrapper placed here instead runs
+// WHILE that span is still open (the span is already bound to the request's
+// context.Context, retrievable via trace.SpanFromContext) and can safely
+// enrich it before returning. See NewErrorBodyRoundTripper for the intended
+// consumer.
+//
+// Ordering among multiple WithInnerRoundTripper calls mirrors
+// WithRoundTripper: the first-passed wrapper is outermost within this inner
+// group (closest to otel, furthest from the wire).
+//
+// A no-op if WithClientOtel is never passed: without otel, this chain still
+// wraps the raw transport, but there is no span in context for the wrapper
+// to find (trace.SpanFromContext returns a no-op span, safe to call).
+func WithInnerRoundTripper(wrap func(http.RoundTripper) http.RoundTripper) ClientOption {
+	return func(o *clientOptions) {
+		o.innerRoundTripperWrappers = append(o.innerRoundTripperWrappers, wrap)
+	}
+}
+
 // WithClientOtel enables OpenTelemetry instrumentation of the client's
 // transport via otelhttp.NewTransport, using the global TracerProvider and
 // MeterProvider — otel.Setup must have been called and registered with
@@ -197,6 +229,11 @@ func NewClient(opts ...ClientOption) *http.Client {
 	}
 
 	var roundTripper http.RoundTripper = transport
+
+	for _, wrap := range slices.Backward(o.innerRoundTripperWrappers) {
+		roundTripper = wrap(roundTripper)
+	}
+
 	if o.otelEnabled {
 		roundTripper = otelhttp.NewTransport(roundTripper, o.otelOpts...)
 	}
