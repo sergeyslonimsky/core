@@ -174,10 +174,43 @@ func TestNewClient_WithClientOtel_IsInnermostInRoundTripperChain(t *testing.T) {
 	assert.Equal(t, "*otelhttp.Transport", nextType)
 }
 
+// TestNewClient_WithInnerRoundTripper_IsInsideOtel locks in the documented
+// guarantee that WithInnerRoundTripper wraps the raw transport BEFORE
+// WithClientOtel does — so an inner wrapper's "next" is the raw transport,
+// never the otelhttp.Transport, which is the opposite of WithRoundTripper.
+func TestNewClient_WithInnerRoundTripper_IsInsideOtel(t *testing.T) {
+	t.Parallel()
+
+	var nextType string
+
+	client := http2.NewClient(
+		http2.WithClientOtel(),
+		http2.WithInnerRoundTripper(func(next http.RoundTripper) http.RoundTripper {
+			nextType = fmt.Sprintf("%T", next)
+
+			return next
+		}),
+	)
+
+	require.NotNil(t, client)
+	assert.Equal(t, "*http.Transport", nextType)
+
+	_, ok := client.Transport.(*otelhttp.Transport)
+	assert.True(t, ok, "otelhttp.Transport must still be the outermost layer client.Transport points to")
+}
+
 var errDialBlocked = errors.New("dial intentionally blocked for test")
 
-func TestNewClient_WithRoundTripper_OrderAndComposition(t *testing.T) {
-	t.Parallel()
+// assertRoundTripperOrderAndComposition drives NewClient with two
+// tag-wrapping RoundTrippers built via the given option constructor (either
+// WithRoundTripper or WithInnerRoundTripper) and asserts the first-passed
+// wrapper runs outermost — shared by both options' ordering tests since the
+// contract, and the way to observe it, is identical for each.
+func assertRoundTripperOrderAndComposition(
+	t *testing.T,
+	optionFor func(func(http.RoundTripper) http.RoundTripper) http2.ClientOption,
+) {
+	t.Helper()
 
 	var order []string
 
@@ -192,8 +225,8 @@ func TestNewClient_WithRoundTripper_OrderAndComposition(t *testing.T) {
 	}
 
 	client := http2.NewClient(
-		http2.WithRoundTripper(tag("outer")),
-		http2.WithRoundTripper(tag("inner")),
+		optionFor(tag("outer")),
+		optionFor(tag("inner")),
 		http2.WithTransportOptions(func(t *http.Transport) {
 			// Fail fast without hitting the network — this test only cares
 			// about wrapper ordering, not the actual round trip result.
@@ -209,6 +242,21 @@ func TestNewClient_WithRoundTripper_OrderAndComposition(t *testing.T) {
 	_, _ = client.Do(req)
 
 	assert.Equal(t, []string{"outer", "inner"}, order)
+}
+
+// TestNewClient_WithInnerRoundTripper_OrderAndComposition mirrors
+// TestNewClient_WithRoundTripper_OrderAndComposition for the inner chain:
+// first-passed wrapper is outermost within the inner group.
+func TestNewClient_WithInnerRoundTripper_OrderAndComposition(t *testing.T) {
+	t.Parallel()
+
+	assertRoundTripperOrderAndComposition(t, http2.WithInnerRoundTripper)
+}
+
+func TestNewClient_WithRoundTripper_OrderAndComposition(t *testing.T) {
+	t.Parallel()
+
+	assertRoundTripperOrderAndComposition(t, http2.WithRoundTripper)
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
