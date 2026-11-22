@@ -681,6 +681,50 @@ func TestLive_EnvWinsOverDynamic(t *testing.T) {
 	}
 }
 
+// TestLive_DynamicNullFallsBackToFile: a dynamic PUT that sets a key to
+// null means "not set" — Live must return the value from the yaml file,
+// not the zero value, and Require must still see the key.
+func TestLive_DynamicNullFallsBackToFile(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeEtcdKV()
+	fake.SetData("dyn.yaml", []byte("rate: 100\nmarker: 1\n"))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	cfg, err := newConfigWithDeps(ctx, configDeps{
+		envLookup: envFn(map[string]string{
+			"APP_SERVICE_NAME":              "svc",
+			"APP_CONFIG_FILE_PATHS":         "/c.yaml",
+			"APP_CONFIG_ETCD_DYNAMIC_PATHS": "dyn.yaml",
+			"APP_CONFIG_ETCD_ENDPOINT":      "127.0.0.1:0",
+		}),
+		openFile:    fileFn(map[string][]byte{"/c.yaml": []byte("rate: 10\n")}),
+		etcdFactory: fakeFactory(fake),
+	})
+	require.NoError(t, err)
+
+	rate := Live[int](cfg, "rate")
+	marker := Live[int](cfg, "marker")
+
+	assert.Equal(t, 100, rate())
+
+	require.True(t, fake.WaitForWatcher("dyn.yaml", 1, time.Second))
+	fake.Set("dyn.yaml", []byte("rate:\nmarker: 2\n"))
+
+	// marker proves the update was applied before checking rate.
+	require.Eventually(t, func() bool {
+		return marker() == 2
+	}, 2*time.Second, time.Millisecond)
+
+	assert.Equal(t, 10, rate())
+
+	got, err := Require[int](cfg, "rate")
+	require.NoError(t, err)
+	assert.Equal(t, 10, got)
+}
+
 func TestLiveOrDefault(t *testing.T) {
 	t.Parallel()
 

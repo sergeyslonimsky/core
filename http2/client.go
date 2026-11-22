@@ -190,7 +190,7 @@ func WithClientOtel(opts ...otelhttp.Option) ClientOption {
 // retries and don't clip a single slow-but-valid call inside a longer
 // request chain.
 func NewClient(opts ...ClientOption) *http.Client {
-	o := &clientOptions{ //nolint:exhaustruct
+	o := &clientOptions{ //nolint:exhaustruct_v5
 		maxIdleConns:          defaultClientMaxIdleConns,
 		maxIdleConnsPerHost:   defaultClientMaxIdleConnsPerHost,
 		dialTimeout:           defaultClientDialTimeout,
@@ -203,9 +203,9 @@ func NewClient(opts ...ClientOption) *http.Client {
 		apply(o)
 	}
 
-	transport := &http.Transport{ //nolint:exhaustruct
+	transport := &http.Transport{ //nolint:exhaustruct_v5
 		Proxy: http.ProxyFromEnvironment,
-		//nolint:exhaustruct // remaining net.Dialer fields have valid zero values
+		//nolint:exhaustruct_v5 // remaining net.Dialer fields have valid zero values
 		DialContext: (&net.Dialer{
 			Timeout:   o.dialTimeout,
 			KeepAlive: o.keepAlive,
@@ -242,6 +242,6 @@ func NewClient(opts ...ClientOption) *http.Client {
 		roundTripper = wrap(roundTripper)
 	}
 
-	//nolint:exhaustruct // Timeout is intentionally left zero; see doc comment
+	//nolint:exhaustruct_v5 // Timeout is intentionally left zero; see doc comment
 	return &http.Client{Transport: roundTripper}
 }

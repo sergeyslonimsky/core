@@ -110,7 +110,7 @@ func startConsumerHost(
 		cancel()
 
 		select {
-		case <-done:
+		case <-done: //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 		case <-time.After(testhelpers.DefaultTestTimeout):
 			t.Fatal("rabbitmq consumer host did not stop within timeout")
 		}

@@ -37,7 +37,7 @@ func NewProducer(cfg ProducerConfig, opts ...Option) (*Producer, error) {
 		return nil, ErrEmptyBrokersList
 	}
 
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -57,7 +57,7 @@ func NewProducer(cfg ProducerConfig, opts ...Option) (*Producer, error) {
 		timeout = defaultProduceTimeout
 	}
 
-	//nolint:exhaustruct // shutdownOnce has valid zero value
+	//nolint:exhaustruct_v5 // shutdownOnce has valid zero value
 	return &Producer{client: c, timeout: timeout, logger: o.logger}, nil
 }
 
@@ -67,7 +67,7 @@ func (p *Producer) Produce(topic, key string, message []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	record := &kgo.Record{ //nolint:exhaustruct
+	record := &kgo.Record{ //nolint:exhaustruct_v5
 		Topic: topic,
 		Key:   []byte(key),
 		Value: message,

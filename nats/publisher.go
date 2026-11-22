@@ -162,7 +162,7 @@ func NewPublisher(ctx context.Context, cfg Config, opts ...PublisherOption) (*Pu
 		}
 	}
 
-	return &Publisher{ //nolint:exhaustruct
+	return &Publisher{ //nolint:exhaustruct_v5
 		nc:             nc,
 		js:             js,
 		ownsConnection: ownsConnection,
@@ -178,7 +178,7 @@ func NewPublisher(ctx context.Context, cfg Config, opts ...PublisherOption) (*Pu
 // ctx is only used for OTel span context; the underlying nats.Conn.PublishMsg
 // call is non-blocking and does not honor cancellation.
 func (p *Publisher) Publish(ctx context.Context, subject string, data []byte, opts ...PublishOption) error {
-	o := PublishOpts{} //nolint:exhaustruct
+	o := PublishOpts{} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(&o)
 	}
@@ -228,7 +228,7 @@ func (p *Publisher) PublishJS(
 	data []byte,
 	opts ...JSPublishOption,
 ) (*jetstream.PubAck, error) {
-	o := JSPublishOpts{} //nolint:exhaustruct
+	o := JSPublishOpts{} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(&o)
 	}
@@ -383,7 +383,7 @@ func (p *Publisher) prepareMsg(
 		injectTraceContextInto(ctx, headers)
 	}
 
-	msg := &nats.Msg{ //nolint:exhaustruct
+	msg := &nats.Msg{ //nolint:exhaustruct_v5
 		Subject: subject,
 		Reply:   reply,
 		Header:  headers,

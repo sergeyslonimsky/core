@@ -1,7 +1,7 @@
 # core
 
 [![CI](https://github.com/sergeyslonimsky/core/actions/workflows/ci.yml/badge.svg)](https://github.com/sergeyslonimsky/core/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/sergeyslonimsky/core)](https://go.dev/doc/go1.25)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sergeyslonimsky/core)](https://go.dev/doc/go1.27)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sergeyslonimsky/core)](https://goreportcard.com/report/github.com/sergeyslonimsky/core)
 [![Latest Release](https://img.shields.io/github/v/release/sergeyslonimsky/core)](https://github.com/sergeyslonimsky/core/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -103,7 +103,7 @@ Phase C: SIGTERM → Runners shutdown LIFO (frontends first), then Resources LIF
 |---|---|---|---|
 | [`lifecycle`](./lifecycle/README.md) | Interfaces | `Resource`, `Runner`, `Healthchecker` | [docs](./lifecycle/README.md) |
 | [`app`](./app/README.md) | Orchestrator | Lifecycle entry point: `New`, `Add`, `Run` | [docs](./app/README.md) |
-| [`di`](./di/README.md) | Helper | viper config loader + thin generic Container | [docs](./di/README.md) |
+| [`di`](./di/README.md) | Helper | Config loader (yaml, etcd, env) + thin generic Container | [docs](./di/README.md) |
 | [`http2`](./http2/README.md) | Runner | HTTP/2 server with `/livez`, `/readyz`, `/metrics` | [docs](./http2/README.md) |
 | [`grpc`](./grpc/README.md) | Runner | gRPC server with interceptors and stats handlers | [docs](./grpc/README.md) |
 | [`otel`](./otel/README.md) | Resource | OpenTelemetry SDK bootstrap (OTLP/HTTP) | [docs](./otel/README.md) |
@@ -138,7 +138,7 @@ For local dev or tests without a collector, pass `otel.Config{Disabled: true}` �
 A typical app structures its DI as:
 
 ```
-internal/di/config/        — viper-key → typed core configs (no mapstructure tags; explicit GetString/GetDuration calls)
+internal/di/config/        — config keys → typed core configs (no mapstructure tags; explicit di.Require / di.Get calls)
 internal/di/service/
     infrastructure.go      — low-level Resources (DB, Redis, Kafka, RabbitMQ, OTel)
     repositories.go        — depend on infrastructure
@@ -155,19 +155,21 @@ See per-package READMEs for the constructor-by-constructor migration story and t
 
 ## Configuration
 
-`core/di.NewConfig` loads viper from (in order, with later sources overriding):
+`core/di.NewConfig` loads configuration from (in order, with later sources overriding):
 
 1. Files (`APP_CONFIG_FILE_PATHS`)
 2. Static etcd (`APP_CONFIG_ETCD_STATIC_PATHS`)
 3. Dynamic etcd with watching (`APP_CONFIG_ETCD_DYNAMIC_PATHS`)
-4. Environment variables (`AutomaticEnv` with `"." → "_"` replacer; `http.frontend.port` reads `HTTP_FRONTEND_PORT`)
+4. Environment variables (dotted key → upper-case with `_`; `http.frontend.port` reads `HTTP_FRONTEND_PORT`). An env var set to `""` counts as not set.
 
-Required env vars:
+Values are read with `di.Get` / `di.GetOrDefault` / `di.Live`; keys that must be set are read with `di.Require` or collected with a `di.Reader`, which reports every missing key at once.
 
-- `APP_ENV` — `dev`, `prod`, etc. Used in etcd paths and exposed via `cfg.GetAppEnv()`.
-- `APP_SERVICE_NAME` — used in etcd paths and as default OTel `service.name`.
+Bootstrap env vars:
 
-See the [`di` README](./di/README.md) for the full list and details.
+- `APP_ENV` — `dev` (default), `prod`, etc. Exposed via `cfg.GetAppEnv()`.
+- `APP_SERVICE_NAME` — required when etcd is configured. Exposed via `cfg.GetServiceName()`.
+
+Etcd paths are used as given; core does not prefix them with the env or service name. See the [`di` README](./di/README.md) for the full list and details.
 
 ## Testing
 

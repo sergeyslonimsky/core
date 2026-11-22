@@ -24,7 +24,7 @@ import (
 func helperListener(t *testing.T) (net.Listener, string) {
 	t.Helper()
 
-	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	return l, "http://" + l.Addr().String()
@@ -35,7 +35,7 @@ func helperListener(t *testing.T) (net.Listener, string) {
 func runServer(t *testing.T, srv *http2.Server) (func(), chan error) {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	errCh := make(chan error, 1)
 
 	go func() { errCh <- srv.Run(ctx) }()
@@ -68,9 +68,9 @@ func TestServer_Livez(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.LivenessPath)
+	resp := doGet(t.Context(), t, base+http2.LivenessPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -84,9 +84,9 @@ func TestServer_Readyz_NoHealthcheck_Returns200(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
+	resp := doGet(t.Context(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -109,9 +109,9 @@ func TestServer_Readyz_HealthcheckFailure_Returns503(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
+	resp := doGet(t.Context(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
@@ -133,9 +133,9 @@ func TestServer_ExtraReadyzCheck_Aggregates(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
+	resp := doGet(t.Context(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
@@ -152,9 +152,9 @@ func TestServer_Metrics_Returns404WithoutHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.MetricsPath)
+	resp := doGet(t.Context(), t, base+http2.MetricsPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
@@ -173,9 +173,9 @@ func TestServer_Metrics_WithHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+http2.MetricsPath)
+	resp := doGet(t.Context(), t, base+http2.MetricsPath)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -198,9 +198,9 @@ func TestServer_Recovery_CatchesPanic(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/panic")
+	resp := doGet(t.Context(), t, base+"/panic")
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -232,9 +232,9 @@ func TestServer_Recovery_PreservesFlusherViaResponseController(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/sse")
+	resp := doGet(t.Context(), t, base+"/sse")
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -264,9 +264,9 @@ func TestServer_Recovery_WriterSatisfiesFlusherDirectly(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/direct")
+	resp := doGet(t.Context(), t, base+"/direct")
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -284,9 +284,9 @@ func TestServer_Mount_RegistersUserHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/hello")
+	resp := doGet(t.Context(), t, base+"/hello")
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
@@ -312,7 +312,7 @@ func TestServer_Shutdown_FreshContext_DoesNotShortCircuitOnCancelledRunCtx(t *te
 		_, _ = w.Write([]byte("done"))
 	}))
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	runErrCh := make(chan error, 1)
 
 	go func() { runErrCh <- srv.Run(ctx) }()
@@ -325,7 +325,7 @@ func TestServer_Shutdown_FreshContext_DoesNotShortCircuitOnCancelledRunCtx(t *te
 
 	go func() {
 		req, reqErr := http.NewRequestWithContext(
-			context.Background(),
+			t.Context(),
 			http.MethodGet,
 			base+"/slow",
 			nil,
@@ -401,9 +401,9 @@ func TestServer_Middleware_OrderOutermostFirst(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/t")
+	resp := doGet(t.Context(), t, base+"/t")
 	defer resp.Body.Close()
 
 	// A is outermost: enter A, enter B, handler, exit B, exit A.
@@ -436,9 +436,9 @@ func TestServer_WithOtel_ForwardsOptions(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
-	resp := doGet(context.Background(), t, base+"/t")
+	resp := doGet(t.Context(), t, base+"/t")
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

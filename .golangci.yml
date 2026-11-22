@@ -1,10 +1,12 @@
 version: "2"
 run:
-  go: "1.26"
+  go: "1.27"
   allow-parallel-runners: true
 linters:
   default: all
   disable:
+    # Deprecated since golangci-lint v2.13, replaced by exhaustruct_v5.
+    - exhaustruct
     - gomodguard
     - noinlineerr
     - ireturn
@@ -86,7 +88,7 @@ linters:
           - funlen
           - goconst
           - varnamelen
-          - exhaustruct
+          - exhaustruct_v5
           - godox
           - err113
           - gosec

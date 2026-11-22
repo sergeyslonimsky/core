@@ -24,7 +24,7 @@ func RunInProcessNATS(t *testing.T) string {
 
 	storeDir := t.TempDir()
 
-	opts := &server.Options{ //nolint:exhaustruct
+	opts := &server.Options{ //nolint:exhaustruct_v5
 		Host:      "127.0.0.1",
 		Port:      -1, // random free port
 		JetStream: true,

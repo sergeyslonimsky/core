@@ -111,6 +111,12 @@ func TestMerge(t *testing.T) {
 			want: map[string]any{"a": "two", "b": "x"},
 		},
 		{
+			name: "nil in src does not erase dst",
+			dst:  map[string]any{"a": 1, "b": map[string]any{"x": 1}},
+			src:  map[string]any{"a": nil, "b": map[string]any{"x": nil, "y": 2}, "c": nil},
+			want: map[string]any{"a": 1, "b": map[string]any{"x": 1, "y": 2}},
+		},
+		{
 			name: "deep nested merge",
 			dst: map[string]any{
 				"a": map[string]any{"x": 1, "y": 2},
@@ -237,6 +243,31 @@ func TestStore_Lookup(t *testing.T) {
 			key:       "foo.bar",
 			wantVal:   "snap",
 			wantFound: true,
+		},
+		{
+			name:      "empty env falls through to snapshot",
+			env:       map[string]string{"FOO_BAR": ""},
+			snapshot:  map[string]any{"foo.bar": "snap"},
+			key:       "foo.bar",
+			wantVal:   "snap",
+			wantFound: true,
+		},
+		{
+			name:      "null snapshot falls through to defaults",
+			snapshot:  map[string]any{"foo.bar": nil},
+			defaults:  map[string]any{"foo.bar": "def"},
+			key:       "foo.bar",
+			wantVal:   "def",
+			wantFound: true,
+		},
+		{
+			name:      "only empty env and null values is missing",
+			env:       map[string]string{"FOO_BAR": ""},
+			snapshot:  map[string]any{"foo.bar": nil},
+			defaults:  map[string]any{"foo.bar": nil},
+			key:       "foo.bar",
+			wantVal:   nil,
+			wantFound: false,
 		},
 		{
 			name:      "missing key",

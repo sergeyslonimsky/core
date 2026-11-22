@@ -55,7 +55,7 @@ func WithHostConnectorOptions(opts ...ConnectorOption) HostOption {
 // NewConsumerHost constructs a ConsumerHost. Use AddConsumer to register
 // consumers before calling Run (typically via app.App).
 func NewConsumerHost(cfg Config, opts ...HostOption) *ConsumerHost {
-	o := &hostOptions{logger: slog.Default()} //nolint:exhaustruct
+	o := &hostOptions{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -65,7 +65,7 @@ func NewConsumerHost(cfg Config, opts ...HostOption) *ConsumerHost {
 		conn = NewConnector(cfg, o.connectorOpts...)
 	}
 
-	return &ConsumerHost{ //nolint:exhaustruct // mu, cancelFn, done have valid zero values
+	return &ConsumerHost{ //nolint:exhaustruct_v5 // mu, cancelFn, done have valid zero values
 		conn:      conn,
 		consumers: make([]rabbitroutine.Consumer, 0),
 		logger:    o.logger,

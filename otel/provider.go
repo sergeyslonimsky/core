@@ -36,7 +36,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -188,7 +187,7 @@ func Setup(ctx context.Context, cfg Config, opts ...Option) (*Provider, error) {
 	if cfg.Disabled {
 		slog.Info("otel disabled via Config.Disabled")
 
-		//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+		//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 		return &Provider{shutdownFuncs: nil}, nil
 	}
 
@@ -206,7 +205,7 @@ func Setup(ctx context.Context, cfg Config, opts ...Option) (*Provider, error) {
 
 	resource := newResource(cfg)
 
-	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+	//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 	p := &Provider{shutdownFuncs: nil}
 
 	otel.SetTextMapPropagator(newPropagator())
@@ -286,7 +285,7 @@ func (p *Provider) initProviders(
 		}
 
 		p.shutdownFuncs = append(p.shutdownFuncs, loggerProvider.Shutdown)
-		global.SetLoggerProvider(loggerProvider)
+		otel.SetLoggerProvider(loggerProvider)
 	}
 
 	return nil
@@ -351,9 +350,9 @@ func newMeterProvider(
 			sdkmetric.WithInterval(o.metricsSendInterval))),
 		sdkmetric.WithResource(resource),
 		sdkmetric.WithView(sdkmetric.NewView(
-			//nolint:exhaustruct
+			//nolint:exhaustruct_v5
 			sdkmetric.Instrument{Kind: sdkmetric.InstrumentKindHistogram},
-			//nolint:exhaustruct
+			//nolint:exhaustruct_v5
 			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
 				Boundaries: o.histogramBoundaries,
 			}},

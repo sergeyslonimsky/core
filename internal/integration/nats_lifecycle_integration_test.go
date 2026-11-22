@@ -39,7 +39,7 @@ func TestNATS_PublisherShutdownFlushOnSharedConn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, owner.Flush())
 
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	publisher, err := corenats.NewPublisher(t.Context(), cfg, corenats.WithConnection(owner))
 	require.NoError(t, err)
 
@@ -84,7 +84,7 @@ func TestNATS_MaxReconnectsPointerSemantics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := corenats.Config{URL: url, MaxReconnects: tc.val} //nolint:exhaustruct
+			cfg := corenats.Config{URL: url, MaxReconnects: tc.val} //nolint:exhaustruct_v5
 			pub, err := corenats.NewPublisher(t.Context(), cfg)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = pub.Shutdown(t.Context()) })
@@ -101,9 +101,9 @@ func TestNATS_SubscriberReadyClosesOnSubscribeError(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	// "bad..subject" with consecutive dots is illegal — ChanSubscribe errors.
 	sub, err := corenats.NewSubscriber[natsEvent](
 		cfg, "bad..subject", rec, corenats.SubscriberHandlers[natsEvent]{},
@@ -136,9 +136,9 @@ func TestNATS_SubscriberReadyReArms(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	sub, err := corenats.NewSubscriber[natsEvent](
 		cfg, "test.rearm.sub", rec, corenats.SubscriberHandlers[natsEvent]{},
 	)
@@ -180,7 +180,7 @@ func TestNATS_PublishJSONDoesNotMutateSharedHeaders(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
 	pub, err := corenats.NewPublisher(t.Context(), cfg)
 	require.NoError(t, err)
@@ -204,7 +204,7 @@ func TestNATS_ShutdownCtxExpiry(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
 	gate := make(chan struct{})
 	proc := processorFunc[natsEvent](func(_ context.Context, _ corenats.Message[natsEvent]) error {
@@ -251,7 +251,7 @@ func TestNATS_ShutdownCtxExpiry(t *testing.T) {
 	close(gate)
 
 	select {
-	case <-runDone:
+	case <-runDone: //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 	case <-time.After(natsEventually):
 		// Connection is closed; Run should have returned by now.
 	}
@@ -272,7 +272,7 @@ func TestNATS_JetStreamHandlersMarshallerAndErrorHandler(t *testing.T) {
 		errCalled        atomic.Int32
 	)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_HANDLERS", "worker", rec,
@@ -330,13 +330,13 @@ func TestNATS_ConcurrentPublish(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
 	pub, err := corenats.NewPublisher(t.Context(), cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	sub, err := corenats.NewSubscriber[natsEvent](
 		cfg, "test.concurrent.pub", rec, corenats.SubscriberHandlers[natsEvent]{},
 		corenats.WithSubscriberWorkerCount(8),

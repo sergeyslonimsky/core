@@ -182,7 +182,7 @@ func NewConsumer[I any](
 	processor Processor[I],
 	opts ...ConsumerOption,
 ) *Consumer[I] {
-	base := consumerBase{ //nolint:exhaustruct // exchangeConfig/queueConfig/bindQueueConfig are opt-in pointers
+	base := consumerBase{ //nolint:exhaustruct_v5 // exchangeConfig/queueConfig/bindQueueConfig are opt-in pointers
 		queue: queue,
 		consumeOpts: ConsumeOpts{
 			PrefetchCount: defaultConsumePrefetchCount,
@@ -197,7 +197,7 @@ func NewConsumer[I any](
 		apply(&base)
 	}
 
-	return &Consumer[I]{ //nolint:exhaustruct // bodyMarshaller is opt-in via SetMarshaller
+	return &Consumer[I]{ //nolint:exhaustruct_v5 // bodyMarshaller is opt-in via SetMarshaller
 		consumerBase: base,
 		processor:    processor,
 	}

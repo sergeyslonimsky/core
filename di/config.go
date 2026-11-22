@@ -7,11 +7,14 @@
 //
 //	defaults  <  yaml file  <  etcd static  <  etcd dynamic  <  env vars
 //
-// env vars always win over every other source. Dotted keys map to
-// underscore env vars, so http.frontend.port reads from HTTP_FRONTEND_PORT.
+// A non-empty env var always wins over every other source; an env var set
+// to "" and a null value count as not set (see store.lookup). Dotted keys
+// map to underscore env vars, so http.frontend.port reads from
+// HTTP_FRONTEND_PORT.
 //
 // Reading values is done via the package-level generic functions
-// Get[T], GetOrDefault[T], Live[T] and LiveOrDefault[T]; the *Config
+// Get[T], GetOrDefault[T], Live[T] and LiveOrDefault[T]; keys that must
+// be present are read with Require[T] or collected with a Reader. The *Config
 // struct exposes only the immutable bootstrap fields (GetAppEnv,
 // GetServiceName) captured at NewConfig time.
 //
@@ -47,6 +50,7 @@
 //   - etcdclient.go: ErrInvalidEtcdRequestTimeout.
 //   - loader_file.go: ErrNotRegularFile, ErrConfigFileTooLarge.
 //   - loader_etcd.go: ErrUnknownConfigType.
+//   - reader.go: ErrRequiredKeyMissing, ErrRequiredKeyType, ErrNilConfig.
 package di
 
 import (
@@ -151,9 +155,9 @@ func GetOrDefault[T ValueType](cfg *Config, key string, def T) T {
 // invocation. Use Live for hot-reloadable values (rate limits, feature
 // flags) that may change at runtime via etcd dynamic.
 //
-// Note: env vars override etcd dynamic. A key bound in env is locked
-// for the process lifetime and Live() will keep returning the env
-// value even if etcd PUTs a different value.
+// Note: env vars override etcd dynamic. A key set to a non-empty value
+// in env is locked for the process lifetime and Live() will keep
+// returning the env value even if etcd PUTs a different value.
 func Live[T ValueType](cfg *Config, key string) func() T {
 	return func() T {
 		v, _ := read[T](cfg, key)
@@ -177,14 +181,43 @@ func LiveOrDefault[T ValueType](cfg *Config, key string, def T) func() T {
 // read performs a single lookup-and-coerce. Returns (zero, false) when
 // the key is missing or coercion fails.
 func read[T ValueType](cfg *Config, key string) (T, bool) {
-	raw, ok := cfg.store.lookup(key)
-	if !ok {
-		var zero T
+	v, _, res := lookupAs[T](cfg, key)
 
-		return zero, false
+	return v, res == lookupFound
+}
+
+// lookupResult tells why lookupAs did or did not produce a value. It is
+// the single place that decides what "present" means, shared by the
+// optional readers (via read) and Require.
+type lookupResult int
+
+const (
+	lookupFound lookupResult = iota
+	lookupMissing
+	lookupMistyped
+	lookupNoConfig
+)
+
+// lookupAs resolves key and coerces it to T. raw is the stored value (nil
+// unless the key was found), reported by Require on a type mismatch.
+func lookupAs[T ValueType](cfg *Config, key string) (T, any, lookupResult) {
+	var zero T
+
+	if cfg == nil || cfg.store == nil {
+		return zero, nil, lookupNoConfig
 	}
 
-	return coerce[T](raw)
+	raw, ok := cfg.store.lookup(key)
+	if !ok {
+		return zero, nil, lookupMissing
+	}
+
+	value, ok := coerce[T](raw)
+	if !ok {
+		return zero, raw, lookupMistyped
+	}
+
+	return value, raw, lookupFound
 }
 
 // coerce dispatches to the type-specific coercion helpers based on T.

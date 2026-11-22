@@ -174,7 +174,7 @@ func NewServer(config Config, opts ...Option) *Server {
 		config.ShutdownTimeout = defaultShutdownTimeout
 	}
 
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -196,11 +196,11 @@ func NewServer(config Config, opts ...Option) *Server {
 	srv := grpc.NewServer(grpcOpts...)
 
 	if o.healthChecker != nil {
-		//nolint:exhaustruct // UnimplementedHealthServer has valid zero value
+		//nolint:exhaustruct_v5 // UnimplementedHealthServer has valid zero value
 		grpchealth.RegisterHealthServer(srv, &healthService{checker: o.healthChecker})
 	}
 
-	//nolint:exhaustruct // started has valid zero value
+	//nolint:exhaustruct_v5 // started has valid zero value
 	return &Server{
 		server:   srv,
 		listener: o.listener,
@@ -238,7 +238,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if listener == nil {
 		var err error
 
-		listener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", ":"+s.port) //nolint:exhaustruct
+		listener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", ":"+s.port) //nolint:exhaustruct_v5
 		if err != nil {
 			return fmt.Errorf("listen tcp :%s: %w", s.port, err)
 		}
@@ -300,12 +300,12 @@ func (s *Server) Address() string {
 // unary handler invocations and converts them to codes.Internal errors.
 // Logs the recovered value plus stack trace via the captured logger.
 func recoveryUnaryInterceptor(o *options) grpc.UnaryServerInterceptor {
-	return func( //nolint:nonamedreturns // named returns required for defer-based panic recovery
+	return func(
 		ctx context.Context,
 		req any,
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
-	) (resp any, err error) {
+	) (resp any, err error) { //nolint:nonamedreturns // named returns required for defer-based panic recovery
 		defer func() {
 			if rec := recover(); rec != nil {
 				o.logger.ErrorContext(ctx, "grpc unary handler panic",

@@ -7,7 +7,7 @@
 # layer in test-appropriate relaxations.
 version: "2"
 run:
-  go: "1.26"
+  go: "1.27"
   allow-parallel-runners: true
 linters:
   default: all
@@ -22,6 +22,7 @@ linters:
     # site is pure noise here. The root module keeps exhaustruct on
     # because its public types are narrower and structs are wired once.
     - exhaustruct
+    - exhaustruct_v5 # successor of exhaustruct since golangci-lint v2.13
     # depguard: this module exists only to host integration tests against
     # the root module, testcontainers, and the broker SDKs — every import
     # it uses is intentional. A default depguard allow-list would flag

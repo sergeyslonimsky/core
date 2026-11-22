@@ -26,6 +26,7 @@ import (
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/sergeyslonimsky/core/internal/retry"
 	"github.com/sergeyslonimsky/core/lifecycle"
@@ -68,6 +69,10 @@ type options struct {
 	connectAttempts int
 	connectBackoff  time.Duration
 	otelEnabled     bool
+	otelNoDialSpans bool
+	// tracerProvider overrides the global one; set only by tests
+	// (export_test.go) so they do not race on otel global state.
+	tracerProvider trace.TracerProvider
 }
 
 // WithLogger attaches a *slog.Logger used for lifecycle events. Defaults to
@@ -162,9 +167,37 @@ func WithConnectRetry(attempts int, backoff time.Duration) Option {
 // New so the providers are non-noop.
 //
 // One span per command is created with the command name, key (if available),
-// and result/error status.
+// and result/error status. New-connection dials are traced as well, as
+// "redis.dial" spans; see WithoutDialSpans to turn those off.
 func WithOtel() Option {
 	return func(o *options) { o.otelEnabled = true }
+}
+
+// WithoutDialSpans keeps command tracing from WithOtel but stops tracing
+// new-connection dials ("redis.dial" spans). Dials mostly happen during
+// background pool maintenance (min-idle refill, ConnMaxLifetime rotation),
+// not inside a request, so their spans usually show up as parentless root
+// traces that add noise without request context. Dial spans stay on by
+// default because dial latency is a useful signal for some consumers.
+//
+// Has no effect without WithOtel.
+func WithoutDialSpans() Option {
+	return func(o *options) { o.otelNoDialSpans = true }
+}
+
+// tracingOptions maps Client options to redisotel options.
+func (o *options) tracingOptions() []redisotel.TracingOption {
+	var opts []redisotel.TracingOption
+
+	if o.otelNoDialSpans {
+		opts = append(opts, redisotel.WithDialFilter(true))
+	}
+
+	if o.tracerProvider != nil {
+		opts = append(opts, redisotel.WithTracerProvider(o.tracerProvider))
+	}
+
+	return opts
 }
 
 // New connects to Redis and verifies the connection with a Ping. Returns a
@@ -173,7 +206,7 @@ func WithOtel() Option {
 // Returns an error if the initial Ping fails — callers should treat this as
 // fatal and not continue startup.
 func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
-	o := &options{ //nolint:exhaustruct
+	o := &options{ //nolint:exhaustruct_v5
 		logger:          slog.Default(),
 		connMaxLifetime: defaultConnMaxLifetime,
 	}
@@ -181,7 +214,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		apply(o)
 	}
 
-	rOpts := &redis.Options{ //nolint:exhaustruct
+	rOpts := &redis.Options{ //nolint:exhaustruct_v5
 		Addr:            cfg.addr(),
 		Password:        cfg.Password,
 		DB:              cfg.DB,
@@ -200,7 +233,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 	rc := redis.NewClient(rOpts)
 
 	if o.otelEnabled {
-		if err := redisotel.InstrumentTracing(rc); err != nil {
+		if err := redisotel.InstrumentTracing(rc, o.tracingOptions()...); err != nil {
 			return nil, fmt.Errorf("instrument tracing: %w", err)
 		}
 
@@ -219,7 +252,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("ping redis at %s: %w", cfg.addr(), pingErr)
 	}
 
-	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+	//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 	return &Client{client: rc, logger: o.logger}, nil
 }
 

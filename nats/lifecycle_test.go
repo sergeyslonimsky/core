@@ -218,8 +218,8 @@ func TestSubscriberRun_alreadyRunningDoesNotCancelActive(t *testing.T) {
 
 	// The first Run is still alive: it has not returned yet.
 	select {
-	case <-doneCh:
-		t.Fatal("first Run was cancelled by the second Run attempt")
+	case err := <-doneCh:
+		t.Fatalf("first Run was cancelled by the second Run attempt: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 

@@ -79,12 +79,19 @@ redis.Config{
 - `WithConnMaxLifetime(time.Duration)` — max connection age before rotation. Default: 30 minutes, for healthy rotation behind a load balancer / failover. Pass `0` explicitly to opt back into go-redis's unlimited default.
 - `WithConnectRetry(attempts int, backoff time.Duration)` — retry the initial connection Ping (coarse, context-aware) to absorb a Redis that comes up a few seconds after boot. Distinct from `WithMaxRetries` (millisecond command retries). Default: no retry.
 - `WithOtel()` — instrument every command with OpenTelemetry traces and metrics via redisotel.
+- `WithoutDialSpans()` — with `WithOtel()`, stop tracing new-connection dials (`redis.dial` spans) while keeping command spans. No effect without `WithOtel()`.
 
 ## Observability (`WithOtel`)
 
 Calls `redisotel.InstrumentTracing(client)` and `redisotel.InstrumentMetrics(client)` from `github.com/redis/go-redis/extra/redisotel/v9`. Uses the global tracer/meter providers — call `otel.Setup` and register the provider with `app.App` before constructing the client.
 
 One span per command is created with the command name, key (where applicable), and result/error. Pool metrics (active connections, hits, misses) are reported via the meter provider.
+
+New-connection dials are traced too, as `redis.dial` spans. Dials mostly happen during background pool maintenance (min-idle refill, `ConnMaxLifetime` rotation), so these spans usually appear as parentless root traces. Add `WithoutDialSpans()` to drop them:
+
+```go
+client, err := redis.New(ctx, cfg, redis.WithOtel(), redis.WithoutDialSpans())
+```
 
 ## Lifecycle
 

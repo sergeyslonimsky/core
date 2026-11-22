@@ -334,7 +334,7 @@ func TestE2E_ErrorHandler_RetryDoesNotCommit(t *testing.T) {
 	)
 
 	cancel1()
-	<-done1
+	<-done1 //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 	require.NoError(t, phase1.Shutdown(t.Context()))
 
 	// Phase 2: fresh consumer in the SAME group with a working processor.

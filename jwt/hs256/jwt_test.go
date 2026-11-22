@@ -23,11 +23,9 @@ func TestService_CreateHS256Token(t *testing.T) {
 	secret := []byte("testSecret")
 
 	token, err := hs256.CreateToken[TestClaims](secret, TestClaims{
-		RegisteredClaims: jwt2.RegisteredClaims{
-			Issuer:    "testService",
-			ExpiresAt: jwt2.NewNumericDate(time.Now().Add(10 * time.Second)),
-		},
-		TestKey: "testValue",
+		Issuer:    "testService",
+		ExpiresAt: jwt2.NewNumericDate(time.Now().Add(10 * time.Second)),
+		TestKey:   "testValue",
 	})
 
 	require.NoError(t, err)

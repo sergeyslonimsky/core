@@ -230,11 +230,11 @@ func NewServer(cfg Config, opts ...Option) *Server {
 		cfg.ShutdownTimeout = defaultShutdownTimeout
 	}
 
-	s := &Server{ //nolint:exhaustruct // listener, middlewares, otelEnabled etc. have valid zero values
+	s := &Server{ //nolint:exhaustruct_v5 // listener, middlewares, otelEnabled etc. have valid zero values
 		cfg:    cfg,
 		logger: slog.Default(),
 		mux:    http.NewServeMux(),
-		server: &http.Server{ //nolint:exhaustruct // Handler/BaseContext set in Run
+		server: &http.Server{ //nolint:exhaustruct_v5 // Handler/BaseContext set in Run
 			Addr:         ":" + cfg.Port,
 			ReadTimeout:  cfg.ReadTimeout,
 			WriteTimeout: cfg.WriteTimeout,
@@ -402,7 +402,7 @@ func recoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		//nolint:contextcheck // defer/recover cannot propagate context
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			//nolint:exhaustruct // wrote bool has valid zero value
+			//nolint:exhaustruct_v5 // wrote bool has valid zero value
 			tracked := &trackingResponseWriter{ResponseWriter: w}
 
 			defer func() {
