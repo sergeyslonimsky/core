@@ -11,7 +11,8 @@
 // underscore env vars, so http.frontend.port reads from HTTP_FRONTEND_PORT.
 //
 // Reading values is done via the package-level generic functions
-// Get[T], GetOrDefault[T], Live[T] and LiveOrDefault[T]; the *Config
+// Get[T], GetOrDefault[T], Live[T] and LiveOrDefault[T]; keys that must
+// be present are read with Require[T] or collected with a Reader. The *Config
 // struct exposes only the immutable bootstrap fields (GetAppEnv,
 // GetServiceName) captured at NewConfig time.
 //
@@ -47,6 +48,7 @@
 //   - etcdclient.go: ErrInvalidEtcdRequestTimeout.
 //   - loader_file.go: ErrNotRegularFile, ErrConfigFileTooLarge.
 //   - loader_etcd.go: ErrUnknownConfigType.
+//   - require.go: ErrRequiredKeyMissing, ErrRequiredKeyType.
 package di
 
 import (

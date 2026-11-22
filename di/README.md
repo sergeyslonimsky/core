@@ -76,6 +76,40 @@ func LiveOrDefault[T ValueType](cfg *Config, key string, def T) func() T
   etcd dynamic.
 - `LiveOrDefault` — `Live` with a fallback.
 
+### Required keys
+
+```go
+func Require[T ValueType](cfg *Config, key string) (T, error)
+func NewReader(cfg *Config) *Reader
+func (r *Reader) Required[T ValueType](key string) T // generic method, Go 1.27+
+func (r *Reader) Err() error
+```
+
+- `Require` — read once; returns `ErrRequiredKeyMissing` when the key is
+  absent (or `null` in yaml) and `ErrRequiredKeyType` when the value can't
+  be coerced to `T`. The error names the key.
+- `Reader` — collects those errors so a whole config struct is built in
+  one literal and checked once; `Err()` joins every failure (in read
+  order), so a deploy reports all missing keys at once instead of one per
+  restart:
+
+```go
+r := di.NewReader(cfg)
+
+smtpCfg := smtp.Config{
+    Host:     r.Required[string]("smtp.host"),
+    Port:     r.Required[int]("smtp.port"),
+    Username: di.Get[string](cfg, "smtp.username"), // optional
+}
+if err := r.Err(); err != nil {
+    return Config{}, fmt.Errorf("load config: %w", err)
+}
+```
+
+Required means **present**, not non-empty: `""`, `0`, an empty slice and
+an env var set to `""` all pass. Validate values (URLs, emails, ranges)
+where they are used.
+
 `ValueType` constraint:
 `string | int | int64 | bool | float64 | time.Duration | []string`.
 
