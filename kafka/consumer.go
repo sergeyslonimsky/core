@@ -61,7 +61,7 @@ func NewConsumer(
 		return nil, fmt.Errorf("parse offset: %w", err)
 	}
 
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -87,7 +87,7 @@ func NewConsumer(
 		return nil, fmt.Errorf("create franz-go consumer client: %w", err)
 	}
 
-	return &Consumer{ //nolint:exhaustruct // shutdownOnce has valid zero value
+	return &Consumer{ //nolint:exhaustruct_v5 // shutdownOnce has valid zero value
 		client:       client,
 		processor:    processor,
 		errorHandler: o.errorHandler,

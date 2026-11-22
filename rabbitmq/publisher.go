@@ -111,7 +111,7 @@ func WithPublisherConnectorOptions(opts ...ConnectorOption) PublisherOption {
 //
 //nolint:contextcheck // background ctx for reconnect loop outlives the constructor's ctx by design — see godoc
 func NewPublisher(ctx context.Context, cfg Config, opts ...PublisherOption) (*Publisher, error) {
-	o := &publisherOptions{ //nolint:exhaustruct
+	o := &publisherOptions{ //nolint:exhaustruct_v5
 		logger:             slog.Default(),
 		maxPublishAttempts: defaultMaxAttempts,
 		publishLinearDelay: defaultLinearDelayTime,
@@ -161,7 +161,7 @@ func NewPublisher(ctx context.Context, cfg Config, opts ...PublisherOption) (*Pu
 		return nil, fmt.Errorf("initial rabbitmq dial: %w", err)
 	}
 
-	return &Publisher{ //nolint:exhaustruct // mu has valid zero value
+	return &Publisher{ //nolint:exhaustruct_v5 // mu has valid zero value
 		conn:      conn,
 		publisher: pub,
 		logger:    o.logger,
@@ -184,7 +184,7 @@ func (p *Publisher) Publish(
 		return fmt.Errorf("marshal message: %w", err)
 	}
 
-	if err := p.publisher.Publish(ctx, exchange, routingKey, amqp.Publishing{ //nolint:exhaustruct
+	if err := p.publisher.Publish(ctx, exchange, routingKey, amqp.Publishing{ //nolint:exhaustruct_v5
 		ContentType: opts.ContentType,
 		Priority:    opts.Priority,
 		MessageId:   opts.MessageID,

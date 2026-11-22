@@ -173,7 +173,7 @@ func WithOtel() Option {
 // Returns an error if the initial Ping fails — callers should treat this as
 // fatal and not continue startup.
 func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
-	o := &options{ //nolint:exhaustruct
+	o := &options{ //nolint:exhaustruct_v5
 		logger:          slog.Default(),
 		connMaxLifetime: defaultConnMaxLifetime,
 	}
@@ -181,7 +181,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		apply(o)
 	}
 
-	rOpts := &redis.Options{ //nolint:exhaustruct
+	rOpts := &redis.Options{ //nolint:exhaustruct_v5
 		Addr:            cfg.addr(),
 		Password:        cfg.Password,
 		DB:              cfg.DB,
@@ -219,7 +219,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("ping redis at %s: %w", cfg.addr(), pingErr)
 	}
 
-	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+	//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 	return &Client{client: rc, logger: o.logger}, nil
 }
 

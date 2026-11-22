@@ -79,16 +79,14 @@ func NewAuthService[T any](
 func (s *AuthService[T]) CreateToken(authInfo T) (string, error) {
 	now := time.Now()
 	claims := AuthClaims[T]{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.serviceName,
-			Subject:   s.claimSubject,
-			Audience:  jwt.ClaimStrings{s.serviceName},
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
-			NotBefore: jwt.NewNumericDate(now),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ID:        uuid.New().String(),
-		},
-		AuthInfo: authInfo,
+		Issuer:    s.serviceName,
+		Subject:   s.claimSubject,
+		Audience:  jwt.ClaimStrings{s.serviceName},
+		ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
+		NotBefore: jwt.NewNumericDate(now),
+		IssuedAt:  jwt.NewNumericDate(now),
+		ID:        uuid.New().String(),
+		AuthInfo:  authInfo,
 	}
 
 	token, err := s.signer.Sign(claims)

@@ -70,7 +70,7 @@ func runConsumerAsync(
 
 	t.Cleanup(func() {
 		cancel()
-		<-errCh
+		<-errCh //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 
 		_ = consumer.Shutdown(context.Background())
 	})

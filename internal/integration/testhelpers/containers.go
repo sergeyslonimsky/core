@@ -124,7 +124,7 @@ func CompactEtcdAtLatest(t *testing.T, endpoint string) {
 func newEtcdClientForTest(t *testing.T, endpoint string) *clientv3.Client {
 	t.Helper()
 
-	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct // test helper
+	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct_v5 // test helper
 		Endpoints:   []string{endpoint},
 		DialTimeout: ShortTestTimeout,
 	})

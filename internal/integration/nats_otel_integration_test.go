@@ -51,14 +51,14 @@ func TestNATS_OTel_PublishConsumeSpansChain_Core(t *testing.T) {
 	rec := withRecordingTracer(t)
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.otel.core"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg, corenats.WithOtel())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	recorder := &natsRecorder{} //nolint:exhaustruct
+	recorder := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, recorder, corenats.SubscriberHandlers[natsEvent]{},
 		corenats.WithOtel(),
@@ -106,12 +106,12 @@ func TestNATS_OTel_PublishConsumeSpansChain_JetStream(t *testing.T) {
 	rec := withRecordingTracer(t)
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.otel.js"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg,
 		corenats.WithOtel(),
-		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct
+		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct_v5
 			Name:     "OTEL_JS",
 			Subjects: []string{subject},
 		}),
@@ -119,7 +119,7 @@ func TestNATS_OTel_PublishConsumeSpansChain_JetStream(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	recorder := &natsRecorder{} //nolint:exhaustruct
+	recorder := &natsRecorder{} //nolint:exhaustruct_v5
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "OTEL_JS", "otel-worker", recorder,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -176,7 +176,7 @@ func TestNATS_JetStreamErrorActionNakDelay(t *testing.T) {
 	subject := "test.js.nakdelay"
 	cfg, publisher := setupJetStream(t, "JS_NAKDELAY", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(1)     // fail once, succeed on second delivery
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
@@ -219,7 +219,7 @@ func TestNATS_AssumeExistingConsumer(t *testing.T) {
 	cfg, publisher := setupJetStream(t, "JS_EXISTING", subject)
 
 	// Step 1: create the durable consumer via the normal path.
-	rec1 := &natsRecorder{} //nolint:exhaustruct
+	rec1 := &natsRecorder{} //nolint:exhaustruct_v5
 	consumer1, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_EXISTING", "the-worker", rec1,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -232,7 +232,7 @@ func TestNATS_AssumeExistingConsumer(t *testing.T) {
 	require.NoError(t, consumer1.Shutdown(t.Context()))
 
 	// Step 2: look up the existing consumer — must NOT clobber config.
-	rec2 := &natsRecorder{} //nolint:exhaustruct
+	rec2 := &natsRecorder{} //nolint:exhaustruct_v5
 	consumer2, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_EXISTING", "the-worker", rec2,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -254,7 +254,7 @@ func TestNATS_AssumeExistingConsumer_NotFound(t *testing.T) {
 	subject := "test.js.notfound"
 	cfg, _ := setupJetStream(t, "JS_NOTFOUND", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	_, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_NOTFOUND", "never-created", rec,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -268,14 +268,14 @@ func TestNATS_UnsupportedContentType(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.contenttype"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	errSeen := make(chan error, 1)
 
 	subscriber, err := corenats.NewSubscriber[natsEvent](

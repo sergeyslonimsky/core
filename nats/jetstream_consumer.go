@@ -135,7 +135,7 @@ func NewJetStreamConsumer[I any](
 		return nil, err
 	}
 
-	return &JetStreamConsumer[I]{ //nolint:exhaustruct
+	return &JetStreamConsumer[I]{ //nolint:exhaustruct_v5
 		stream:         stream,
 		durable:        durable,
 		processor:      processor,
@@ -516,19 +516,19 @@ func (c *JetStreamConsumer[I]) buildMessage(raw jetstream.Msg) (Message[I], erro
 
 	if c.bodyMarshaller != nil {
 		if err := c.bodyMarshaller(data, &payload); err != nil {
-			return Message[I]{ //nolint:exhaustruct
+			return Message[I]{ //nolint:exhaustruct_v5
 				Subject: raw.Subject(),
 				Headers: raw.Headers(),
 			}, fmt.Errorf("custom marshaller: %w", err)
 		}
 	} else if err := json.Unmarshal(data, &payload); err != nil {
-		return Message[I]{ //nolint:exhaustruct
+		return Message[I]{ //nolint:exhaustruct_v5
 			Subject: raw.Subject(),
 			Headers: raw.Headers(),
 		}, fmt.Errorf("json unmarshal: %w", err)
 	}
 
-	msg := Message[I]{ //nolint:exhaustruct
+	msg := Message[I]{ //nolint:exhaustruct_v5
 		Payload: payload,
 		Subject: raw.Subject(),
 		Headers: raw.Headers(),
@@ -625,7 +625,7 @@ func buildConsumerConfig(
 	subjects []string,
 	mutate func(*jetstream.ConsumerConfig),
 ) jetstream.ConsumerConfig {
-	cfg := jetstream.ConsumerConfig{ //nolint:exhaustruct
+	cfg := jetstream.ConsumerConfig{ //nolint:exhaustruct_v5
 		Durable:   durable,
 		AckPolicy: jetstream.AckExplicitPolicy,
 	}

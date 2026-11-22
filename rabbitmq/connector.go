@@ -87,7 +87,7 @@ type Connector struct {
 // NOT dial — use Connect (or have NewPublisher / NewConsumerHost call it
 // for you).
 func NewConnector(cfg Config, opts ...ConnectorOption) *Connector {
-	o := &connectorOptions{ //nolint:exhaustruct
+	o := &connectorOptions{ //nolint:exhaustruct_v5
 		rabbitRoutineConfig: rabbitroutine.Config{
 			ReconnectAttempts: defaultReconnectionAttempts,
 			Wait:              defaultConnectionWaitTime,

@@ -106,7 +106,7 @@ func NewSubscriber[I any](
 		return nil, err
 	}
 
-	return &Subscriber[I]{ //nolint:exhaustruct
+	return &Subscriber[I]{ //nolint:exhaustruct_v5
 		processor:      processor,
 		bodyMarshaller: handlers.Marshaller,
 		errorHandler:   handlers.ErrorHandler,
@@ -333,7 +333,7 @@ func (s *Subscriber[I]) workerLoop(
 func (s *Subscriber[I]) handleMsg(ctx context.Context, raw *nats.Msg, process processFn[I]) {
 	payload, err := s.decode(raw)
 	if err != nil {
-		s.onError(ctx, Message[I]{ //nolint:exhaustruct
+		s.onError(ctx, Message[I]{ //nolint:exhaustruct_v5
 			Subject: raw.Subject,
 			Reply:   raw.Reply,
 			Headers: raw.Header,
@@ -342,7 +342,7 @@ func (s *Subscriber[I]) handleMsg(ctx context.Context, raw *nats.Msg, process pr
 		return
 	}
 
-	msg := Message[I]{ //nolint:exhaustruct
+	msg := Message[I]{ //nolint:exhaustruct_v5
 		Payload: payload,
 		Subject: raw.Subject,
 		Reply:   raw.Reply,

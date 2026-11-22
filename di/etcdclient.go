@@ -82,7 +82,7 @@ func newRealEtcdKV(endpoint string, requestTimeout time.Duration) (*realEtcdKV, 
 		requestTimeout = defaultEtcdRequestTimeout
 	}
 
-	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct // zero values are fine for unused fields
+	cli, err := clientv3.New(clientv3.Config{ //nolint:exhaustruct_v5 // zero values are fine for unused fields
 		Endpoints:   []string{endpoint},
 		DialTimeout: defaultEtcdDialTimeout,
 	})
@@ -169,13 +169,13 @@ func (r *realEtcdKV) Close() error {
 // translateEvent converts a clientv3 event into our watchEvent. PUT
 // carries the new value; DELETE has no payload.
 func translateEvent(ev *clientv3.Event) watchEvent {
-	switch ev.Type {
+	switch ev.GetType() {
 	case clientv3.EventTypeDelete:
 		return watchEvent{Type: eventDelete, Value: nil, Err: nil}
 	case clientv3.EventTypePut:
-		return watchEvent{Type: eventPut, Value: ev.Kv.GetValue(), Err: nil}
+		return watchEvent{Type: eventPut, Value: ev.GetKv().GetValue(), Err: nil}
 	default:
-		return watchEvent{Type: eventPut, Value: ev.Kv.GetValue(), Err: nil}
+		return watchEvent{Type: eventPut, Value: ev.GetKv().GetValue(), Err: nil}
 	}
 }
 

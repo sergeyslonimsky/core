@@ -100,7 +100,7 @@ func WithSignals(sigs ...os.Signal) Option {
 //   - Shutdown timeout: 30 seconds
 //   - Signals: SIGINT, SIGTERM
 func New(opts ...Option) *App {
-	a := &App{ //nolint:exhaustruct // mu, started, runners, resources have valid zero values
+	a := &App{ //nolint:exhaustruct_v5 // mu, started, runners, resources have valid zero values
 		logger:          slog.Default(),
 		signals:         []os.Signal{os.Interrupt, syscall.SIGTERM},
 		shutdownTimeout: defaultShutdownTimeout,

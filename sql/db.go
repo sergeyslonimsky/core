@@ -145,7 +145,7 @@ func WithConnectRetry(attempts int, backoff time.Duration) Option {
 // Returns an error if the connection fails. Callers should treat this as
 // fatal during startup.
 func New(ctx context.Context, cfg Config, opts ...Option) (*DB, error) {
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -188,7 +188,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*DB, error) {
 		sqlxDB.SetConnMaxIdleTime(o.connMaxIdleTime)
 	}
 
-	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+	//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 	return &DB{
 		db:     sqlxDB,
 		logger: o.logger,
@@ -200,7 +200,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*DB, error) {
 // The wrapper does not change the underlying *sqlx.DB's pool settings — if
 // pool tuning is needed, configure it on the *sqlx.DB before calling.
 func NewFromSqlx(db *sqlx.DB) *DB {
-	//nolint:exhaustruct // shutdownOnce/shutdownErr have valid zero values
+	//nolint:exhaustruct_v5 // shutdownOnce/shutdownErr have valid zero values
 	return &DB{
 		db:     db,
 		logger: slog.Default(),

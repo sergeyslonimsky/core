@@ -37,7 +37,7 @@ func NewClient(_ context.Context, cfg ClientConfig, opts ...Option) (*Client, er
 		return nil, ErrEmptyBrokersList
 	}
 
-	o := &options{logger: slog.Default()} //nolint:exhaustruct
+	o := &options{logger: slog.Default()} //nolint:exhaustruct_v5
 	for _, apply := range opts {
 		apply(o)
 	}
@@ -55,7 +55,7 @@ func NewClient(_ context.Context, cfg ClientConfig, opts ...Option) (*Client, er
 		return nil, fmt.Errorf("create franz-go client: %w", err)
 	}
 
-	//nolint:exhaustruct // shutdownOnce has valid zero value
+	//nolint:exhaustruct_v5 // shutdownOnce has valid zero value
 	return &Client{
 		client: c,
 		logger: o.logger,

@@ -68,7 +68,7 @@ func TestServer_Livez(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.LivenessPath)
 	defer resp.Body.Close()
@@ -84,7 +84,7 @@ func TestServer_Readyz_NoHealthcheck_Returns200(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
@@ -109,7 +109,7 @@ func TestServer_Readyz_HealthcheckFailure_Returns503(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
@@ -133,7 +133,7 @@ func TestServer_ExtraReadyzCheck_Aggregates(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.ReadinessPath)
 	defer resp.Body.Close()
@@ -152,7 +152,7 @@ func TestServer_Metrics_Returns404WithoutHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.MetricsPath)
 	defer resp.Body.Close()
@@ -173,7 +173,7 @@ func TestServer_Metrics_WithHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+http2.MetricsPath)
 	defer resp.Body.Close()
@@ -198,7 +198,7 @@ func TestServer_Recovery_CatchesPanic(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/panic")
 	defer resp.Body.Close()
@@ -232,7 +232,7 @@ func TestServer_Recovery_PreservesFlusherViaResponseController(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/sse")
 	defer resp.Body.Close()
@@ -264,7 +264,7 @@ func TestServer_Recovery_WriterSatisfiesFlusherDirectly(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/direct")
 	defer resp.Body.Close()
@@ -284,7 +284,7 @@ func TestServer_Mount_RegistersUserHandler(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/hello")
 	defer resp.Body.Close()
@@ -401,7 +401,7 @@ func TestServer_Middleware_OrderOutermostFirst(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/t")
 	defer resp.Body.Close()
@@ -436,7 +436,7 @@ func TestServer_WithOtel_ForwardsOptions(t *testing.T) {
 
 	cancel, errCh := runServer(t, srv)
 
-	defer func() { cancel(); <-errCh }()
+	defer func() { cancel(); assert.NoError(t, <-errCh) }()
 
 	resp := doGet(context.Background(), t, base+"/t")
 	defer resp.Body.Close()

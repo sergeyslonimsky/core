@@ -19,7 +19,7 @@ func startServerOnPort(t *testing.T, port int) (*server.Server, string) {
 
 	storeDir := t.TempDir()
 
-	opts := &server.Options{ //nolint:exhaustruct
+	opts := &server.Options{ //nolint:exhaustruct_v5
 		Host:      "127.0.0.1",
 		Port:      port,
 		JetStream: true,
@@ -47,14 +47,14 @@ func TestNATS_ReconnectMidRun(t *testing.T) {
 	// Random port via -1, then re-bind to the same port on restart.
 	ns1, url := startServerOnPort(t, -1)
 
-	cfg := corenats.Config{ //nolint:exhaustruct
+	cfg := corenats.Config{ //nolint:exhaustruct_v5
 		URL:           url,
 		ReconnectWait: 100 * time.Millisecond,
 		DialTimeout:   500 * time.Millisecond,
 	}
 	subject := "test.reconnect"
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, rec, corenats.SubscriberHandlers[natsEvent]{},
 	)

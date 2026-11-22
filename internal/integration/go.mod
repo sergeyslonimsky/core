@@ -1,6 +1,6 @@
 module github.com/sergeyslonimsky/core/internal/integration
 
-go 1.26
+go 1.27
 
 require (
 	github.com/nats-io/nats-server/v2 v2.14.3

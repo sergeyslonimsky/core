@@ -106,7 +106,7 @@ func runNATSRunner(t *testing.T, runner natsRunner) {
 		case <-r.Ready():
 		case <-time.After(natsEventually):
 			cancel()
-			<-runErr
+			<-runErr //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 			t.Fatal("runner Ready() never closed")
 		}
 	}
@@ -115,7 +115,7 @@ func runNATSRunner(t *testing.T, runner natsRunner) {
 		cancel()
 
 		select {
-		case <-runErr:
+		case <-runErr: //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 		case <-time.After(natsEventually):
 			t.Error("runner did not stop within timeout")
 		}
@@ -135,7 +135,7 @@ func TestNATS_CorePublishSubscribe(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.core.basic"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -143,7 +143,7 @@ func TestNATS_CorePublishSubscribe(t *testing.T) {
 
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, rec, corenats.SubscriberHandlers[natsEvent]{},
 	)
@@ -162,7 +162,7 @@ func TestNATS_CoreHeaders(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.core.headers"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -170,7 +170,7 @@ func TestNATS_CoreHeaders(t *testing.T) {
 
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, rec, corenats.SubscriberHandlers[natsEvent]{},
 	)
@@ -196,7 +196,7 @@ func TestNATS_CoreQueueGroupFanout(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.core.qg"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -204,8 +204,8 @@ func TestNATS_CoreQueueGroupFanout(t *testing.T) {
 
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	recA := &natsRecorder{} //nolint:exhaustruct
-	recB := &natsRecorder{} //nolint:exhaustruct
+	recA := &natsRecorder{} //nolint:exhaustruct_v5
+	recB := &natsRecorder{} //nolint:exhaustruct_v5
 
 	subA, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, recA, corenats.SubscriberHandlers[natsEvent]{},
@@ -241,7 +241,7 @@ func TestNATS_CoreErrorHandler(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.core.err"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -249,7 +249,7 @@ func TestNATS_CoreErrorHandler(t *testing.T) {
 
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(1)
 
 	var (
@@ -287,7 +287,7 @@ func TestNATS_SharedConnection(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.core.shared"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -295,7 +295,7 @@ func TestNATS_SharedConnection(t *testing.T) {
 
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, rec, corenats.SubscriberHandlers[natsEvent]{},
 		corenats.WithConnection(publisher.Conn()),
@@ -320,9 +320,9 @@ func TestNATS_DoubleRun(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, "test.double", rec, corenats.SubscriberHandlers[natsEvent]{},
 	)
@@ -340,7 +340,7 @@ func TestNATS_DoubleRun(t *testing.T) {
 	require.ErrorIs(t, err, corenats.ErrAlreadyRunning)
 
 	cancel()
-	<-done
+	<-done //nolint:errcheck // only waiting for the goroutine to exit; its error after cancel is irrelevant
 }
 
 // -----------------------------------------------------------------------------
@@ -355,10 +355,10 @@ func setupJetStream(
 	t.Helper()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg,
-		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct
+		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct_v5
 			Name:     streamName,
 			Subjects: subjects,
 		}),
@@ -376,7 +376,7 @@ func TestNATS_JetStreamPublishConsume(t *testing.T) {
 	subject := "test.js.basic"
 	cfg, publisher := setupJetStream(t, "JS_BASIC", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_BASIC", "worker", rec,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -423,7 +423,7 @@ func TestNATS_JetStreamNakRedelivery(t *testing.T) {
 	subject := "test.js.nak"
 	cfg, publisher := setupJetStream(t, "JS_NAK", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(2)     // fail twice, succeed on 3rd delivery
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
@@ -454,7 +454,7 @@ func TestNATS_JetStreamErrorActionTerm(t *testing.T) {
 	subject := "test.js.term"
 	cfg, publisher := setupJetStream(t, "JS_TERM", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(100)   // always fail
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
@@ -491,7 +491,7 @@ func TestNATS_JetStreamErrorActionAck(t *testing.T) {
 	subject := "test.js.ackerr"
 	cfg, publisher := setupJetStream(t, "JS_ACKERR", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(100)
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
@@ -527,7 +527,7 @@ func TestNATS_JetStreamErrorActionStop(t *testing.T) {
 	subject := "test.js.stop"
 	cfg, publisher := setupJetStream(t, "JS_STOP", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	rec.failN.Store(1)
 
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
@@ -571,10 +571,10 @@ func TestNATS_JetStreamMultiSubjectFilter(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg,
-		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct
+		corenats.WithPublisherStream(jetstream.StreamConfig{ //nolint:exhaustruct_v5
 			Name:     "JS_MULTI",
 			Subjects: []string{"a.>", "b.>", "c.>"},
 		}),
@@ -582,7 +582,7 @@ func TestNATS_JetStreamMultiSubjectFilter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Shutdown(t.Context()) })
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	consumer, err := corenats.NewJetStreamConsumer[natsEvent](
 		t.Context(), cfg, "JS_MULTI", "worker", rec,
 		corenats.JSConsumerHandlers[natsEvent]{},
@@ -676,7 +676,7 @@ func TestNATS_JetStreamCustomMarshaller(t *testing.T) {
 	subject := "test.js.marshal"
 	cfg, publisher := setupJetStream(t, "JS_MARSHAL", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 
 	var called atomic.Int32
 
@@ -715,7 +715,7 @@ func TestNATS_JetStreamMarshallerError(t *testing.T) {
 	subject := "test.js.badjson"
 	cfg, publisher := setupJetStream(t, "JS_BADJSON", subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 
 	var errSeen atomic.Int32
 
@@ -751,7 +751,7 @@ func TestNATS_JSONPublisher(t *testing.T) {
 	t.Parallel()
 
 	url := testhelpers.RunInProcessNATS(t)
-	cfg := corenats.Config{URL: url} //nolint:exhaustruct
+	cfg := corenats.Config{URL: url} //nolint:exhaustruct_v5
 	subject := "test.jp.evt"
 
 	publisher, err := corenats.NewPublisher(t.Context(), cfg)
@@ -760,7 +760,7 @@ func TestNATS_JSONPublisher(t *testing.T) {
 
 	jp := corenats.NewJSONPublisher[natsEvent](publisher, subject)
 
-	rec := &natsRecorder{} //nolint:exhaustruct
+	rec := &natsRecorder{} //nolint:exhaustruct_v5
 	subscriber, err := corenats.NewSubscriber[natsEvent](
 		cfg, subject, rec, corenats.SubscriberHandlers[natsEvent]{},
 	)
