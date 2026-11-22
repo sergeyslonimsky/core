@@ -48,7 +48,7 @@
 //   - etcdclient.go: ErrInvalidEtcdRequestTimeout.
 //   - loader_file.go: ErrNotRegularFile, ErrConfigFileTooLarge.
 //   - loader_etcd.go: ErrUnknownConfigType.
-//   - require.go: ErrRequiredKeyMissing, ErrRequiredKeyType.
+//   - reader.go: ErrRequiredKeyMissing, ErrRequiredKeyType, ErrNilConfig.
 package di
 
 import (
@@ -179,14 +179,43 @@ func LiveOrDefault[T ValueType](cfg *Config, key string, def T) func() T {
 // read performs a single lookup-and-coerce. Returns (zero, false) when
 // the key is missing or coercion fails.
 func read[T ValueType](cfg *Config, key string) (T, bool) {
-	raw, ok := cfg.store.lookup(key)
-	if !ok {
-		var zero T
+	v, _, res := lookupAs[T](cfg, key)
 
-		return zero, false
+	return v, res == lookupFound
+}
+
+// lookupResult tells why lookupAs did or did not produce a value. It is
+// the single place that decides what "present" means, shared by the
+// optional readers (via read) and Require.
+type lookupResult int
+
+const (
+	lookupFound lookupResult = iota
+	lookupMissing
+	lookupMistyped
+	lookupNoConfig
+)
+
+// lookupAs resolves key and coerces it to T. raw is the stored value (nil
+// unless the key was found), reported by Require on a type mismatch.
+func lookupAs[T ValueType](cfg *Config, key string) (T, any, lookupResult) {
+	var zero T
+
+	if cfg == nil || cfg.store == nil {
+		return zero, nil, lookupNoConfig
 	}
 
-	return coerce[T](raw)
+	raw, ok := cfg.store.lookup(key)
+	if !ok {
+		return zero, nil, lookupMissing
+	}
+
+	value, ok := coerce[T](raw)
+	if !ok {
+		return zero, raw, lookupMistyped
+	}
+
+	return value, raw, lookupFound
 }
 
 // coerce dispatches to the type-specific coercion helpers based on T.

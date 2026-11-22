@@ -141,16 +141,81 @@ func TestRequire_ZeroValueOnError(t *testing.T) {
 func TestRequire_PresenceNotContent(t *testing.T) {
 	t.Parallel()
 
-	// An empty yaml string and an env var set to "" are present values.
-	cfg := requireTestConfig(t, map[string]string{"SMTP_PASSWORD": ""})
+	// An empty yaml string is a present value.
+	cfg := requireTestConfig(t, nil)
 
 	tls, err := Require[string](cfg, "smtp.tls")
 	require.NoError(t, err)
 	assert.Empty(t, tls)
+}
 
-	password, err := Require[string](cfg, "smtp.password")
+func TestRequire_EmptyEnvIsUnset(t *testing.T) {
+	t.Parallel()
+
+	// SMTP_PASSWORD="" is what `SMTP_PASSWORD=${SMTP_PASSWORD}` produces
+	// when the variable is not set on the host: it must not satisfy
+	// Require, and it must not hide the value from the file.
+	cfg := requireTestConfig(t, map[string]string{
+		"SMTP_PASSWORD": "",
+		"SMTP_HOST":     "",
+		"SMTP_ENABLED":  "",
+	})
+
+	_, err := Require[string](cfg, "smtp.password")
+	require.ErrorIs(t, err, ErrRequiredKeyMissing)
+
+	host, err := Require[string](cfg, "smtp.host")
 	require.NoError(t, err)
-	assert.Empty(t, password)
+	assert.Equal(t, "localhost", host)
+
+	enabled, err := Require[bool](cfg, "smtp.enabled")
+	require.NoError(t, err)
+	assert.True(t, enabled)
+}
+
+func TestRequire_NullFallsBackToDefaults(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(nil, map[string]any{"smtp.port": 587})
+	s.setSnapshot(map[string]any{"smtp.port": nil})
+
+	cfg := &Config{store: s, serviceName: "", appEnv: AppEnvDev}
+
+	port, err := Require[int](cfg, "smtp.port")
+	require.NoError(t, err)
+	assert.Equal(t, 587, port)
+	assert.Equal(t, 587, Get[int](cfg, "smtp.port"))
+}
+
+func TestRequire_NilConfig(t *testing.T) {
+	t.Parallel()
+
+	v, err := Require[string](nil, "smtp.host")
+	require.ErrorIs(t, err, ErrNilConfig)
+	assert.Contains(t, err.Error(), "smtp.host")
+	assert.Empty(t, v)
+}
+
+func TestReader_NilConfig(t *testing.T) {
+	t.Parallel()
+
+	for name, r := range map[string]*Reader{
+		"NewReader(nil)": NewReader(nil),
+		"zero Reader":    {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Empty(t, r.Required[string]("smtp.host"))
+			assert.Equal(t, 0, r.Required[int]("smtp.port"))
+			assert.Empty(t, r.Get[string]("smtp.username"))
+			assert.Equal(t, 7, r.GetOrDefault[int]("smtp.retries", 7))
+
+			err := r.Err()
+			require.ErrorIs(t, err, ErrNilConfig)
+			assert.NotErrorIs(t, err, ErrRequiredKeyMissing)
+		})
+	}
 }
 
 func TestRequire_EnvOverridesFile(t *testing.T) {
@@ -274,4 +339,49 @@ func TestReader_OptionalReadsDoNotHideRequiredErrors(t *testing.T) {
 	require.ErrorIs(t, err, ErrRequiredKeyMissing)
 	require.NotErrorIs(t, err, ErrRequiredKeyType)
 	assert.NotContains(t, err.Error(), "smtp.password")
+}
+
+func TestRequire_NullInLaterFileKeepsEarlierValue(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := newConfigWithDeps(t.Context(), configDeps{
+		envLookup: envFn(map[string]string{"APP_CONFIG_FILE_PATHS": "/a.yaml,/b.yaml"}),
+		openFile: fileFn(map[string][]byte{
+			"/a.yaml": []byte("smtp:\n  host: base-host\n"),
+			"/b.yaml": []byte("smtp:\n  host:\n"),
+		}),
+		etcdFactory: noFactory(),
+	})
+	require.NoError(t, err)
+
+	host, err := Require[string](cfg, "smtp.host")
+	require.NoError(t, err)
+	assert.Equal(t, "base-host", host)
+}
+
+func TestOptionalReaders_EmptyEnvFallsThrough(t *testing.T) {
+	t.Parallel()
+
+	cfg := requireTestConfig(t, map[string]string{"SMTP_HOST": "", "SMTP_PORT": "", "SMTP_USERNAME": ""})
+
+	assert.Equal(t, "localhost", Get[string](cfg, "smtp.host"))
+	assert.Equal(t, 1025, GetOrDefault[int](cfg, "smtp.port", 1))
+	assert.Equal(t, "localhost", Live[string](cfg, "smtp.host")())
+	assert.Equal(t, 1025, LiveOrDefault[int](cfg, "smtp.port", 1)())
+	assert.Equal(t, "anon", GetOrDefault[string](cfg, "smtp.username", "anon"))
+}
+
+func TestReader_ZeroConfig(t *testing.T) {
+	t.Parallel()
+
+	r := NewReader(&Config{})
+
+	assert.Empty(t, r.Required[string]("a"))
+	assert.Empty(t, r.Required[string]("b"))
+	assert.Empty(t, r.Get[string]("c"))
+	assert.Equal(t, 3, r.GetOrDefault[int]("d", 3))
+
+	err := r.Err()
+	require.ErrorIs(t, err, ErrNilConfig)
+	assert.NotContains(t, err.Error(), "reading", "nil config must be reported once, not per key")
 }

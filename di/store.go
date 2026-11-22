@@ -52,19 +52,26 @@ func (s *store) setSnapshot(m map[string]any) {
 // Env values are always returned as string. Snapshot/defaults preserve
 // their original type. Returns (nil, false) when key is missing in all
 // sources.
+//
+// Unset values do not shadow lower layers: an env var set to "" (the
+// usual result of `KEY=${KEY}` in docker-compose / k8s with KEY unset)
+// and a null value in the snapshot or defaults (`key:` with nothing after
+// it in yaml) are skipped, and the search continues with the next layer.
+// This matches envOrDefault, which already treats an empty env var as
+// unset.
 func (s *store) lookup(key string) (any, bool) {
-	if v, ok := s.envLookup(envKey(key)); ok {
+	if v, ok := s.envLookup(envKey(key)); ok && v != "" {
 		return v, true
 	}
 
 	snap := s.snapshot.Load()
 	if snap != nil {
-		if v, ok := (*snap)[key]; ok {
+		if v, ok := (*snap)[key]; ok && v != nil {
 			return v, true
 		}
 	}
 
-	if v, ok := s.defaults[key]; ok {
+	if v, ok := s.defaults[key]; ok && v != nil {
 		return v, true
 	}
 
@@ -111,7 +118,9 @@ func flattenInto(out map[string]any, prefix string, m map[string]any) {
 // merge deep-merges src into dst returning a new map. Inputs are not
 // mutated. For overlapping keys: if both values are map[string]any,
 // they are merged recursively; otherwise src wins (including the case
-// where src overwrites a map with a scalar or vice versa).
+// where src overwrites a map with a scalar or vice versa). A nil value in
+// src is skipped: a null in a higher-priority source means "not set" (see
+// lookup), so it must not erase the value from a lower-priority one.
 func merge(dst, src map[string]any) map[string]any {
 	out := make(map[string]any, len(dst)+len(src))
 	for k, v := range dst {
@@ -123,6 +132,10 @@ func merge(dst, src map[string]any) map[string]any {
 	}
 
 	for k, v := range src {
+		if v == nil {
+			continue
+		}
+
 		existing, hasExisting := out[k]
 		dstMap, dstIsMap := existing.(map[string]any)
 		srcMap, srcIsMap := v.(map[string]any)

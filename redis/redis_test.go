@@ -1,6 +1,7 @@
 package redis_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestNew_DefaultConnMaxLifetime(t *testing.T) {
 	client, err := redis.New(t.Context(), redis.Config{Host: mr.Host(), Port: mr.Port()})
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = client.Shutdown(t.Context()) })
+	t.Cleanup(func() { _ = client.Shutdown(context.WithoutCancel(t.Context())) })
 
 	assert.Equal(t, 30*time.Minute, client.Unwrap().Options().ConnMaxLifetime,
 		"default ConnMaxLifetime must be 30m for healthy rotation behind an LB/failover")
@@ -35,7 +36,7 @@ func TestNew_WithConnMaxLifetimeZero_OptsOutOfDefault(t *testing.T) {
 	client, err := redis.New(t.Context(), redis.Config{Host: mr.Host(), Port: mr.Port()}, redis.WithConnMaxLifetime(0))
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = client.Shutdown(t.Context()) })
+	t.Cleanup(func() { _ = client.Shutdown(context.WithoutCancel(t.Context())) })
 
 	assert.Zero(t, client.Unwrap().Options().ConnMaxLifetime,
 		"explicit WithConnMaxLifetime(0) must still opt back into go-redis's unlimited default")
@@ -52,7 +53,7 @@ func TestNew_WithConnMaxLifetime_Override(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = client.Shutdown(t.Context()) })
+	t.Cleanup(func() { _ = client.Shutdown(context.WithoutCancel(t.Context())) })
 
 	assert.Equal(t, 5*time.Minute, client.Unwrap().Options().ConnMaxLifetime)
 }
@@ -74,6 +75,8 @@ func TestNew_WithOtel_Default_TracesDial(t *testing.T) {
 
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	// t.Context() is already cancelled when cleanups run.
+	t.Cleanup(func() { _ = tp.Shutdown(context.WithoutCancel(t.Context())) })
 
 	client, err := redis.New(
 		t.Context(), redis.Config{Host: mr.Host(), Port: mr.Port()},
@@ -81,7 +84,7 @@ func TestNew_WithOtel_Default_TracesDial(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = client.Shutdown(t.Context()) })
+	t.Cleanup(func() { _ = client.Shutdown(context.WithoutCancel(t.Context())) })
 
 	require.NoError(t, client.Set(t.Context(), "k", "v", 0))
 
@@ -100,6 +103,8 @@ func TestNew_WithoutDialSpans_SuppressesDialSpan(t *testing.T) {
 
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	// t.Context() is already cancelled when cleanups run.
+	t.Cleanup(func() { _ = tp.Shutdown(context.WithoutCancel(t.Context())) })
 
 	client, err := redis.New(
 		t.Context(), redis.Config{Host: mr.Host(), Port: mr.Port()},
@@ -107,7 +112,7 @@ func TestNew_WithoutDialSpans_SuppressesDialSpan(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = client.Shutdown(t.Context()) })
+	t.Cleanup(func() { _ = client.Shutdown(context.WithoutCancel(t.Context())) })
 
 	require.NoError(t, client.Set(t.Context(), "k", "v", 0))
 

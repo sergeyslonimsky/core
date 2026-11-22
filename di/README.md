@@ -89,14 +89,16 @@ func (r *Reader) Err() error
 ```
 
 - `Require` — read once; returns `ErrRequiredKeyMissing` when the key is
-  absent (or `null` in yaml) and `ErrRequiredKeyType` when the value can't
-  be coerced to `T`. The error names the key.
+  not set in any source, `ErrRequiredKeyType` when the value can't be
+  coerced to `T`, and `ErrNilConfig` for a nil `*Config`. The error names
+  the key.
 - `Reader` — reads a whole config in one pass. `Required` collects those
   errors; `Get` / `GetOrDefault` read optional keys exactly like the
   package functions and never fail. `Err()` joins every `Required`
-  failure (in read order), so a deploy reports all missing keys at once
-  instead of one per restart. `Live` / `LiveOrDefault` stay on `*Config`:
-  they are for runtime reads, a `Reader` is a startup tool.
+  failure (in read order for sequential reads), so a deploy reports all
+  missing keys at once instead of one per restart. `Live` /
+  `LiveOrDefault` stay on `*Config`: they are for runtime reads, a
+  `Reader` is a startup tool.
 
 ```go
 r := di.NewReader(cfg)
@@ -112,9 +114,27 @@ if err := r.Err(); err != nil {
 }
 ```
 
-Required means **present**, not non-empty: `""`, `0`, an empty slice and
-an env var set to `""` all pass. Validate values (URLs, emails, ranges)
-where they are used.
+Required means **set**, not non-empty: `""` in yaml, `0` and an empty slice
+all pass. Validate values (URLs, emails, ranges) where they are used.
+
+### Unset values
+
+Every reader (`Get`, `GetOrDefault`, `Live`, `Require`, `Reader`) skips
+values that only look set, and falls through to the next source:
+
+- an env var set to `""` — what `KEY=${KEY}` in docker-compose / k8s
+  produces when `KEY` is unset on the host;
+- a `null` value — `key:` with nothing after it in yaml or etcd.
+
+So `SMTP_HOST=""` does not hide `smtp.host` from yaml, and a `null` does
+not hide a lower source: a later yaml file, etcd static or an etcd dynamic
+PUT with `key:` keeps the value from the earlier yaml files (or the
+default). A key whose only values are these is
+missing. To clear a value through env, set the key to something your code
+treats as "off" instead of `""`.
+
+The `Reader` methods are generic methods, so this package requires
+Go 1.27+.
 
 `ValueType` constraint:
 `string | int | int64 | bool | float64 | time.Duration | []string`.
