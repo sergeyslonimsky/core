@@ -7,8 +7,10 @@
 //
 //	defaults  <  yaml file  <  etcd static  <  etcd dynamic  <  env vars
 //
-// env vars always win over every other source. Dotted keys map to
-// underscore env vars, so http.frontend.port reads from HTTP_FRONTEND_PORT.
+// A non-empty env var always wins over every other source; an env var set
+// to "" and a null value count as not set (see store.lookup). Dotted keys
+// map to underscore env vars, so http.frontend.port reads from
+// HTTP_FRONTEND_PORT.
 //
 // Reading values is done via the package-level generic functions
 // Get[T], GetOrDefault[T], Live[T] and LiveOrDefault[T]; keys that must
@@ -153,9 +155,9 @@ func GetOrDefault[T ValueType](cfg *Config, key string, def T) T {
 // invocation. Use Live for hot-reloadable values (rate limits, feature
 // flags) that may change at runtime via etcd dynamic.
 //
-// Note: env vars override etcd dynamic. A key bound in env is locked
-// for the process lifetime and Live() will keep returning the env
-// value even if etcd PUTs a different value.
+// Note: env vars override etcd dynamic. A key set to a non-empty value
+// in env is locked for the process lifetime and Live() will keep
+// returning the env value even if etcd PUTs a different value.
 func Live[T ValueType](cfg *Config, key string) func() T {
 	return func() T {
 		v, _ := read[T](cfg, key)

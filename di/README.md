@@ -23,8 +23,9 @@ currentRPS := di.Live[int](cfg, "limits.rps") // re-read on each call() for runt
 env vars  >  etcd dynamic  >  etcd static  >  yaml file  >  defaults
 ```
 
-Any key can be overridden via env. If env is absent, the highest-priority
-source wins: dynamic > static > file > default.
+Any key can be overridden via env. If env is absent (or set to `""`), the
+highest-priority source with a value wins: dynamic > static > file >
+default. See [Unset values](#unset-values).
 
 | Layer         | Who manages       | When changes                              |
 |---------------|-------------------|-------------------------------------------|
@@ -39,10 +40,10 @@ source wins: dynamic > static > file > default.
 The following keys are read from **env only** (they decide where other
 configuration comes from):
 
-- `APP_ENV` (default: `dev`) — environment label, used in the etcd path
-  prefix.
-- `APP_SERVICE_NAME` — required when etcd is configured. Used in the
-  etcd path prefix.
+- `APP_ENV` (default: `dev`) — environment label, exposed via
+  `cfg.GetAppEnv()`.
+- `APP_SERVICE_NAME` — required when etcd is configured. Exposed via
+  `cfg.GetServiceName()`.
 - `APP_CONFIG_FILE_PATHS` — comma-separated list of yaml file paths or
   directories (directories load `config.yaml`).
 - `APP_CONFIG_FILE_PATH` — legacy single path.
@@ -58,7 +59,9 @@ configuration comes from):
   watcher resync. Default `5s`. A malformed value fails startup with
   `ErrInvalidEtcdRequestTimeout`.
 
-Etcd full key = `{APP_ENV}/{APP_SERVICE_NAME}/{path}`.
+Etcd paths are passed to etcd as-is: core does not prepend `APP_ENV` or
+`APP_SERVICE_NAME`. Template the full key (including any namespace prefix
+your etcd setup requires) into the env var at deploy time.
 
 ## Public API
 
