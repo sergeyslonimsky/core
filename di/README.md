@@ -81,17 +81,22 @@ func LiveOrDefault[T ValueType](cfg *Config, key string, def T) func() T
 ```go
 func Require[T ValueType](cfg *Config, key string) (T, error)
 func NewReader(cfg *Config) *Reader
-func (r *Reader) Required[T ValueType](key string) T // generic method, Go 1.27+
+// generic methods, Go 1.27+
+func (r *Reader) Required[T ValueType](key string) T
+func (r *Reader) Get[T ValueType](key string) T
+func (r *Reader) GetOrDefault[T ValueType](key string, def T) T
 func (r *Reader) Err() error
 ```
 
 - `Require` — read once; returns `ErrRequiredKeyMissing` when the key is
   absent (or `null` in yaml) and `ErrRequiredKeyType` when the value can't
   be coerced to `T`. The error names the key.
-- `Reader` — collects those errors so a whole config struct is built in
-  one literal and checked once; `Err()` joins every failure (in read
-  order), so a deploy reports all missing keys at once instead of one per
-  restart:
+- `Reader` — reads a whole config in one pass. `Required` collects those
+  errors; `Get` / `GetOrDefault` read optional keys exactly like the
+  package functions and never fail. `Err()` joins every `Required`
+  failure (in read order), so a deploy reports all missing keys at once
+  instead of one per restart. `Live` / `LiveOrDefault` stay on `*Config`:
+  they are for runtime reads, a `Reader` is a startup tool.
 
 ```go
 r := di.NewReader(cfg)
@@ -99,7 +104,8 @@ r := di.NewReader(cfg)
 smtpCfg := smtp.Config{
     Host:     r.Required[string]("smtp.host"),
     Port:     r.Required[int]("smtp.port"),
-    Username: di.Get[string](cfg, "smtp.username"), // optional
+    Username: r.Get[string]("smtp.username"),
+    Timeout:  r.GetOrDefault[time.Duration]("smtp.timeout", 10*time.Second),
 }
 if err := r.Err(); err != nil {
     return Config{}, fmt.Errorf("load config: %w", err)

@@ -43,19 +43,22 @@ func Require[T ValueType](cfg *Config, key string) (T, error) {
 	return value, nil
 }
 
-// Reader reads required keys and collects their errors, so a config
-// struct can be built in one literal and checked once:
+// Reader reads a config in one pass: required keys collect their errors,
+// optional keys read as usual, so a config struct can be built in one
+// literal and checked once:
 //
 //	r := di.NewReader(cfg)
 //	smtpCfg := smtp.Config{
-//		Host: r.Required[string]("smtp.host"),
-//		Port: r.Required[int]("smtp.port"),
+//		Host:     r.Required[string]("smtp.host"),
+//		Port:     r.Required[int]("smtp.port"),
+//		Username: r.Get[string]("smtp.username"),
+//		Timeout:  r.GetOrDefault[time.Duration]("smtp.timeout", 10*time.Second),
 //	}
 //	if err := r.Err(); err != nil {
-//		return err // lists every missing or mistyped key
+//		return err // lists every missing or mistyped required key
 //	}
 //
-// Optional keys keep using Get / GetOrDefault on the same *Config.
+// Hot-reloadable values keep using Live / LiveOrDefault on the *Config.
 // A Reader is safe for concurrent use.
 type Reader struct {
 	cfg *Config
@@ -80,6 +83,19 @@ func (r *Reader) Required[T ValueType](key string) T {
 	}
 
 	return value
+}
+
+// Get reads an optional key, like the package-level Get: the zero value
+// of T when the key is absent or not coercible. Never records an error.
+func (r *Reader) Get[T ValueType](key string) T {
+	return Get[T](r.cfg, key)
+}
+
+// GetOrDefault reads an optional key, like the package-level
+// GetOrDefault: def when the key is absent or not coercible. Never
+// records an error.
+func (r *Reader) GetOrDefault[T ValueType](key string, def T) T {
+	return GetOrDefault[T](r.cfg, key, def)
 }
 
 // Err returns every error recorded by Required, joined with errors.Join

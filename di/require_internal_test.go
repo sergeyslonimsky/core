@@ -238,3 +238,40 @@ func TestReader_ConcurrentUse(t *testing.T) {
 	require.ErrorIs(t, err, ErrRequiredKeyMissing)
 	assert.Equal(t, readers, strings.Count(err.Error(), "smtp.username"))
 }
+
+func TestReader_OptionalKeys(t *testing.T) {
+	t.Parallel()
+
+	r := NewReader(requireTestConfig(t, map[string]string{"SMTP_USERNAME": "resend"}))
+
+	// Present values, from yaml and env.
+	assert.Equal(t, 1025, r.Get[int]("smtp.port"))
+	assert.Equal(t, "resend", r.Get[string]("smtp.username"))
+	assert.Equal(t, 5*time.Second, r.GetOrDefault[time.Duration]("smtp.timeout", time.Minute))
+
+	// Absent, null or not coercible: zero value / default, as the package
+	// functions do.
+	assert.Empty(t, r.Get[string]("smtp.password"))
+	assert.Empty(t, r.Get[string]("smtp.nullvalue"))
+	assert.Equal(t, 0, r.Get[int]("smtp.badport"))
+	assert.Equal(t, 587, r.GetOrDefault[int]("smtp.missingport", 587))
+	assert.Equal(t, 587, r.GetOrDefault[int]("smtp.badport", 587))
+
+	// Optional reads never make the Reader fail.
+	require.NoError(t, r.Err())
+}
+
+func TestReader_OptionalReadsDoNotHideRequiredErrors(t *testing.T) {
+	t.Parallel()
+
+	r := NewReader(requireTestConfig(t, nil))
+
+	_ = r.Get[string]("smtp.password")
+	_ = r.Required[string]("smtp.username")
+	_ = r.GetOrDefault[int]("smtp.badport", 1)
+
+	err := r.Err()
+	require.ErrorIs(t, err, ErrRequiredKeyMissing)
+	require.NotErrorIs(t, err, ErrRequiredKeyType)
+	assert.NotContains(t, err.Error(), "smtp.password")
+}
