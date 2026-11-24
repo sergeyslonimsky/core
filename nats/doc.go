@@ -35,11 +35,16 @@
 // For JetStreamConsumer, processor errors flow through an optional
 // JSErrorHandler[I] (set via SetErrorHandler) returning one of:
 //
-//   - JSErrorActionNak (default) — redeliver after AckWait.
+//   - JSErrorActionNak (default) — redeliver immediately (AckWait and
+//     BackOff do not apply to a NAK).
 //   - JSErrorActionNakDelay — redeliver after an explicit delay.
 //   - JSErrorActionTerm — discard (poison-pill).
 //   - JSErrorActionAck — swallow (DLQ already handled by the caller).
 //   - JSErrorActionStop — fatal; Run returns the wrapped error.
+//
+// JSRetryPolicy[I].Handler() builds a JSErrorHandler with growing delays per
+// attempt, Term for ErrPermanent / ErrDecode, and Term + OnGiveUp on the last
+// allowed attempt.
 //
 // # OpenTelemetry
 //

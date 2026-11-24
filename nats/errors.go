@@ -37,4 +37,13 @@ var (
 	// other than "application/json" or "". JetStream messages without
 	// headers are treated as JSON by default. Mirrors rabbitmq behavior.
 	ErrUnsupportedMessage = errors.New("nats: unsupported message content type")
+
+	// ErrDecode wraps the error a JSErrorHandler receives when the message
+	// body could not be decoded into the payload type. Redelivery cannot fix
+	// it; JSRetryPolicy terminates such messages.
+	ErrDecode = errors.New("nats: decode message")
+
+	// ErrPermanent marks a processing error that a retry cannot fix. Wrap
+	// errors with Permanent; JSRetryPolicy terminates such messages.
+	ErrPermanent = errors.New("nats: permanent processing error")
 )
