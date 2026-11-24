@@ -246,7 +246,7 @@ Processor errors flow through a `JSErrorHandler[I]` that returns one of:
 
 | Action | Effect |
 |---|---|
-| `JSErrorActionNak` | NAK without delay — broker redelivers after `AckWait`. Default. |
+| `JSErrorActionNak` | NAK without delay — broker redelivers **immediately** (`AckWait`/`BackOff` do not apply to a NAK). Default. |
 | `JSErrorActionNakDelay` | NAK with the returned delay. |
 | `JSErrorActionTerm` | Mark as terminal — broker does NOT redeliver. Poison-pill path. |
 | `JSErrorActionAck` | Swallow the error (caller has already DLQ'd, advance the stream). |
@@ -269,8 +269,45 @@ consumer, _ := corenats.NewJetStreamConsumer[Event](ctx,
 )
 ```
 
-Without a handler (zero-value `JSConsumerHandlers`) the default is `Nak`
-(redeliver after `AckWait`).
+Without a handler (zero-value `JSConsumerHandlers`) the default is `Nak`:
+immediate redelivery. With `MaxDeliver` set, a message that keeps failing
+uses up every attempt within milliseconds, so a short outage of a downstream
+dependency drops it.
+
+#### Retry policy with growing delays
+
+`JSRetryPolicy[I]` builds a handler that spaces out redeliveries by attempt
+number (`Message.NumDelivered`) and terminates what a retry cannot fix:
+
+```go
+const maxDeliver = 5
+
+consumer, _ := corenats.NewJetStreamConsumer[Email](ctx,
+    cfg, "EMAILS", "email-sender", &sender{},
+    corenats.JSConsumerHandlers[Email]{
+        ErrorHandler: corenats.JSRetryPolicy[Email]{
+            // wait after attempt 1, 2, 3, 4; the last value repeats
+            Delays:     []time.Duration{10 * time.Second, time.Minute, 5 * time.Minute, 15 * time.Minute},
+            MaxDeliver: maxDeliver, // same as the consumer's MaxDeliver
+            OnGiveUp: func(ctx context.Context, msg corenats.Message[Email], err error) {
+                slog.ErrorContext(ctx, "email dropped", "subject", msg.Subject,
+                    "sequence", msg.Sequence, "attempts", msg.NumDelivered, "err", err)
+            },
+        }.Handler(),
+    },
+    corenats.WithJSConsumerConfig(func(c *jetstream.ConsumerConfig) { c.MaxDeliver = maxDeliver }),
+)
+```
+
+| Error | Action |
+|---|---|
+| `errors.Is(err, corenats.ErrPermanent)` (wrap with `corenats.Permanent(err)`) | `Term` + `OnGiveUp` |
+| `errors.Is(err, corenats.ErrDecode)` (body did not decode) | `Term` + `OnGiveUp` |
+| attempt `NumDelivered >= MaxDeliver` | `Term` + `OnGiveUp` (instead of the server silently stopping) |
+| anything else | `NakDelay` with `Delays[NumDelivered-1]` (last value repeats) |
+
+Keep `AckWait` above the processor's worst-case duration, otherwise a slow
+attempt is redelivered while it is still running.
 
 ## Publishing
 

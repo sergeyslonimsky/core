@@ -49,7 +49,7 @@ type Message[I any] struct {
 // For JetStreamConsumer, the returned error is passed to the configured
 // JSErrorHandler[I] which decides whether the message is Acked, Nacked,
 // Term'd, or whether the consumer should stop. Without a custom handler the
-// default is Nak (redeliver after AckWait).
+// default is Nak (immediate redelivery).
 type Processor[I any] interface {
 	Process(ctx context.Context, msg Message[I]) error
 }
@@ -70,8 +70,11 @@ type JSErrorAction int
 
 const (
 	// JSErrorActionNak negative-acks the message with no delay. JetStream
-	// will redeliver after the consumer's AckWait. Default when no
-	// JSErrorHandler is configured.
+	// redelivers it immediately: the consumer's AckWait and BackOff apply
+	// only to unacknowledged deliveries, not to a NAK. With MaxDeliver set,
+	// a persistently failing message burns all attempts within milliseconds
+	// — use JSErrorActionNakDelay or JSRetryPolicy to space them out.
+	// Default when no JSErrorHandler is configured.
 	JSErrorActionNak JSErrorAction = iota
 
 	// JSErrorActionNakDelay negative-acks with an explicit redelivery delay.

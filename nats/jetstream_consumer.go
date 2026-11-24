@@ -24,7 +24,8 @@ type JSConsumerHandlers[I any] struct {
 	Marshaller BodyMarshaller[I]
 
 	// ErrorHandler decides what to do when Processor.Process returns a
-	// non-nil error. Nil = Nak (redeliver after AckWait).
+	// non-nil error. Nil = Nak (immediate redelivery); see JSRetryPolicy
+	// for spaced-out retries.
 	ErrorHandler JSErrorHandler[I]
 }
 
@@ -489,7 +490,7 @@ func (c *JetStreamConsumer[I]) handleMsg(
 			slog.Any("err", err),
 		)
 
-		return c.applyAction(ctx, raw, msg, fmt.Errorf("decode message: %w", err))
+		return c.applyAction(ctx, raw, msg, fmt.Errorf("%w: %w", ErrDecode, err))
 	}
 
 	if err = process(ctx, msg); err != nil {
