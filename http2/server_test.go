@@ -445,6 +445,80 @@ func TestServer_WithOtel_ForwardsOptions(t *testing.T) {
 	assert.True(t, formatterCalled.Load(), "otelhttp.Option passed to WithOtel must reach otelhttp.NewHandler")
 }
 
+func TestServer_WithUnencryptedHTTP2(t *testing.T) {
+	t.Parallel()
+
+	h1Only := func() *http.Protocols {
+		var p http.Protocols
+		p.SetHTTP1(true)
+
+		return &p
+	}
+	h2cOnly := func() *http.Protocols {
+		var p http.Protocols
+		p.SetUnencryptedHTTP2(true)
+
+		return &p
+	}
+
+	tests := []struct {
+		name           string
+		serverOpts     []http2.Option
+		clientProtos   *http.Protocols
+		wantErr        bool
+		wantProtoMajor int
+	}{
+		{
+			name:           "h2c enabled, prior-knowledge client gets HTTP/2",
+			serverOpts:     []http2.Option{http2.WithUnencryptedHTTP2()},
+			clientProtos:   h2cOnly(),
+			wantProtoMajor: 2,
+		},
+		{
+			name:           "h2c enabled, HTTP/1.1 client still served",
+			serverOpts:     []http2.Option{http2.WithUnencryptedHTTP2()},
+			clientProtos:   h1Only(),
+			wantProtoMajor: 1,
+		},
+		{
+			name:         "h2c disabled, prior-knowledge client is rejected",
+			clientProtos: h2cOnly(),
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			l, base := helperListener(t)
+			srv := http2.NewServer(http2.Config{}, append(tt.serverOpts, http2.WithListener(l))...)
+
+			cancel, _ := runServer(t, srv)
+			defer cancel()
+
+			client := &http.Client{Transport: &http.Transport{Protocols: tt.clientProtos}}
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+http2.LivenessPath, nil)
+			require.NoError(t, err)
+
+			resp, err := client.Do(req)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, tt.wantProtoMajor, resp.ProtoMajor)
+		})
+	}
+}
+
 // Compile-time assertions.
 var (
 	_ lifecycle.Runner   = (*http2.Server)(nil)
