@@ -87,4 +87,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-retract v1.14.0
+retract v1.14.0 // Tagged on the wrong commit: identical to v1.13.0, lacks WithUnencryptedHTTP2. Use v1.14.1.
