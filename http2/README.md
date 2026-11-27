@@ -64,6 +64,7 @@ http2.Config{
 - `WithLogger(*slog.Logger)` — logger used by recovery middleware and lifecycle events. Default: `slog.Default()`.
 - `WithOtel()` — wrap final handler with `otelhttp.NewHandler` using global tracer/meter providers.
 - `WithRecovery()` — install panic-recovery middleware that logs the stack and replies 500.
+- `WithUnencryptedHTTP2()` — accept HTTP/2 with prior knowledge (h2c) on the plaintext listener, alongside HTTP/1.1. Use inside a cluster behind a mesh or a TLS-terminating gateway. The `Upgrade: h2c` handshake is not supported.
 - `WithHealthcheckFrom(lifecycle.Healthchecker)` — wire `/readyz` aggregation (typically pass `*app.App`).
 - `WithReadyzCheck(name string, fn func(ctx) error)` — add an inline readiness check.
 - `WithMetricsHandler(http.Handler)` — install a `/metrics` handler (typically `promhttp.Handler` over an otel Prometheus exporter).

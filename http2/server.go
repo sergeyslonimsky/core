@@ -100,6 +100,7 @@ type Server struct {
 	otelEnabled    bool
 	otelOpts       []otelhttp.Option
 	recoveryOn     bool
+	h2cEnabled     bool
 	healthchecker  lifecycle.Healthchecker
 	extraReadyz    []readyzCheck
 	metricsHandler http.Handler
@@ -175,6 +176,18 @@ func WithRecovery() Option {
 	return func(s *Server) { s.recoveryOn = true }
 }
 
+// WithUnencryptedHTTP2 makes the plaintext listener accept HTTP/2 with prior
+// knowledge (h2c) alongside HTTP/1.1. Use it behind a TLS-terminating
+// proxy or a service mesh inside a cluster, where the hop to the pod is
+// cleartext but clients (Envoy, gRPC, ConnectRPC streaming) need HTTP/2.
+//
+// Only prior-knowledge h2c is supported; the HTTP/1.1 "Upgrade: h2c"
+// handshake is not. HTTP/1.1 stays enabled so kubelet probes and plain
+// HTTP/1.1 clients keep working.
+func WithUnencryptedHTTP2() Option {
+	return func(s *Server) { s.h2cEnabled = true }
+}
+
 // WithHealthcheckFrom wires a lifecycle.Healthchecker (typically an
 // *app.App) into the /readyz handler. On every /readyz request, the passed
 // Healthchecker's Healthcheck method is invoked and its result aggregated
@@ -243,6 +256,15 @@ func NewServer(cfg Config, opts ...Option) *Server {
 
 	for _, opt := range opts {
 		opt(s)
+	}
+
+	if s.h2cEnabled {
+		var protocols http.Protocols
+
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
+
+		s.server.Protocols = &protocols
 	}
 
 	s.mountBuiltins()
